@@ -1,0 +1,23 @@
+{
+  "name": "google",
+  "version": "0.1.0",
+  "description": "Google Drive, Calendar, and Gmail connector via OAuth. Provides the 'google' app connection for plugins that read files, events, or mail.",
+  "author": {
+    "name": "DUYA Team",
+    "url": "https://github.com/lava-chen/duya"
+  },
+  "license": "MIT",
+  "keywords": [
+    "google",
+    "drive",
+    "calendar",
+    "gmail",
+    "oauth"
+  ],
+  "interface": {
+    "displayName": "Google Workspace",
+    "shortDescription": "Google Drive, Calendar, and Gmail connector via OAuth. Provides the 'google' app connection for plugins that read files,",
+    "longDescription": "Google Drive, Calendar, and Gmail connector via OAuth. Provides the 'google' app connection for plugins that read files, events, or mail.",
+    "category": "productivity"
+  }
+}

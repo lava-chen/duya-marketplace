@@ -1,0 +1,21 @@
+{
+  "name": "apple-reminders",
+  "version": "1.0.0",
+  "description": "Manage Apple Reminders via remindctl CLI (list, add, complete, delete).",
+  "author": {
+    "name": "DUYA Team",
+    "url": "https://github.com/lava-chen/duya"
+  },
+  "license": "MIT",
+  "keywords": [
+    "apple-reminders",
+    "skill",
+    "apple"
+  ],
+  "interface": {
+    "displayName": "apple-reminders",
+    "shortDescription": "Manage Apple Reminders via remindctl CLI (list, add, complete, delete).",
+    "longDescription": "Manage Apple Reminders via remindctl CLI (list, add, complete, delete).",
+    "category": "productivity"
+  }
+}

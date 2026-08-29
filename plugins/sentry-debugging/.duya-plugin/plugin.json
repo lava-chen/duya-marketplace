@@ -1,0 +1,17 @@
+{
+  "name": "sentry-debugging",
+  "version": "0.1.0",
+  "description": "Sentry issue investigation, stacktrace analysis, regression detection, and fix-and-verify loop.",
+  "author": { "name": "DUYA Team", "url": "https://github.com/lava-chen/duya" },
+  "license": "MIT",
+  "keywords": ["sentry", "errors", "stacktrace", "regression", "debugging"],
+  "setup": [
+    { "id": "sentryAuthToken", "label": "Sentry auth token (org-level, read scope minimum; write scope for releases)", "type": "secret", "required": true },
+    { "id": "sentryOrgSlug", "label": "Sentry organization slug", "type": "text", "required": true }
+  ],
+  "interface": {
+    "displayName": "Sentry Debugging",
+    "longDescription": "Suggest when the user is investigating Sentry errors: issue triage, stacktrace analysis, regression detection, or fix-and-verify loops.",
+    "category": "development"
+  }
+}

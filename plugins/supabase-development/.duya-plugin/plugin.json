@@ -1,0 +1,17 @@
+{
+  "name": "supabase-development",
+  "version": "0.1.0",
+  "description": "Supabase Postgres, migrations, Edge Functions, and auth — read-heavy with explicit confirmation on every build, migrate, and deploy.",
+  "author": { "name": "DUYA Team", "url": "https://github.com/lava-chen/duya" },
+  "license": "MIT",
+  "keywords": ["supabase", "postgres", "migrations", "edge-functions", "auth"],
+  "setup": [
+    { "id": "supabaseAccessToken", "label": "Supabase personal access token (Project Settings > API)", "type": "secret", "required": true },
+    { "id": "supabaseProjectRef", "label": "Supabase project ref (Project Settings > API)", "type": "text", "required": true }
+  ],
+  "interface": {
+    "displayName": "Supabase Development",
+    "longDescription": "Suggest when the user works with Supabase: Postgres, migrations, Edge Functions, or auth — read-heavy with explicit confirmation on build, migrate, deploy.",
+    "category": "development"
+  }
+}

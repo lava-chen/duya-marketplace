@@ -1,0 +1,16 @@
+{
+  "name": "linear-project-execution",
+  "version": "0.1.0",
+  "description": "Linear issue triage, spec-to-issues, sprint planning, implementation status, and issue-to-code.",
+  "author": { "name": "DUYA Team", "url": "https://github.com/lava-chen/duya" },
+  "license": "MIT",
+  "keywords": ["linear", "issues", "sprint", "project-management"],
+  "setup": [
+    { "id": "linearApiKey", "label": "Linear personal API key (scoped to read/write issues)", "type": "secret", "required": true }
+  ],
+  "interface": {
+    "displayName": "Linear Project Execution",
+    "longDescription": "Suggest when the user works with Linear: issue triage, spec-to-issues, sprint planning, implementation status, or issue-to-code.",
+    "category": "development"
+  }
+}

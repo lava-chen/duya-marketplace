@@ -1,0 +1,21 @@
+{
+  "name": "conductor-canvas-control",
+  "version": "0.1.0",
+  "description": "Detailed guide for controlling the conductor canvas (canvas philosophy, mode classification, zoning conventions, element kinds, coordinates, layout patterns, capture/verify timing)",
+  "author": {
+    "name": "DUYA Team",
+    "url": "https://github.com/lava-chen/duya"
+  },
+  "license": "MIT",
+  "keywords": [
+    "conductor-canvas-control",
+    "skill",
+    "agentic"
+  ],
+  "interface": {
+    "displayName": "conductor-canvas-control",
+    "shortDescription": "Detailed guide for controlling the conductor canvas (canvas philosophy, mode classification, zoning conventions, element",
+    "longDescription": "Detailed guide for controlling the conductor canvas (canvas philosophy, mode classification, zoning conventions, element kinds, coordinates, layout patterns, capture/verify timing)",
+    "category": "development"
+  }
+}

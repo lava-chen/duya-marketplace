@@ -1,0 +1,22 @@
+{
+  "name": "slack",
+  "version": "0.1.0",
+  "description": "Slack workspace connector via OAuth. Provides the 'slack' app connection for plugins that post or read channel messages.",
+  "author": {
+    "name": "DUYA Team",
+    "url": "https://github.com/lava-chen/duya"
+  },
+  "license": "MIT",
+  "keywords": [
+    "slack",
+    "chat",
+    "channels",
+    "oauth"
+  ],
+  "interface": {
+    "displayName": "Slack",
+    "shortDescription": "Slack workspace connector via OAuth. Provides the 'slack' app connection for plugins that post or read channel messages.",
+    "longDescription": "Slack workspace connector via OAuth. Provides the 'slack' app connection for plugins that post or read channel messages.",
+    "category": "communication"
+  }
+}

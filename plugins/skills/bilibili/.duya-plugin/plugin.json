@@ -1,0 +1,21 @@
+{
+  "name": "bilibili",
+  "version": "1.1.0",
+  "description": "Extract video info, subtitles, comments, and search videos from Bilibili (bilibili.com). Uses WBI-signed API calls to bypass风控 restrictions and properly fetch subtitle data.",
+  "author": {
+    "name": "DUYA Team",
+    "url": "https://github.com/lava-chen/duya"
+  },
+  "license": "MIT",
+  "keywords": [
+    "bilibili",
+    "skill",
+    "media"
+  ],
+  "interface": {
+    "displayName": "bilibili",
+    "shortDescription": "Extract video info, subtitles, comments, and search videos from Bilibili (bilibili.com). Uses WBI-signed API calls to by",
+    "longDescription": "Extract video info, subtitles, comments, and search videos from Bilibili (bilibili.com). Uses WBI-signed API calls to bypass风控 restrictions and properly fetch subtitle data.",
+    "category": "media"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "defaultMode": "read",
+  "writeActionsRequireApproval": true,
+  "destructiveActionsRequireApproval": true,
+  "permissions": [
+    { "name": "agent.memory.read", "scope": "research" },
+    { "name": "agent.memory.write", "scope": "research" },
+    { "name": "workspace.read" }
+  ]
+}

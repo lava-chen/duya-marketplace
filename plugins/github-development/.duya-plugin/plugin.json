@@ -1,0 +1,16 @@
+{
+  "name": "github-development",
+  "version": "0.1.0",
+  "description": "GitHub repository, issue, PR, review, CI, and release workflows.",
+  "author": { "name": "DUYA Team", "url": "https://github.com/lava-chen/duya" },
+  "license": "MIT",
+  "keywords": ["github", "git", "issues", "pull-requests", "ci"],
+  "setup": [
+    { "id": "githubToken", "label": "GitHub App installation token or OAuth token (long-lived PAT discouraged)", "type": "secret", "required": true }
+  ],
+  "interface": {
+    "displayName": "GitHub Development",
+    "longDescription": "Suggest when the user is working with a GitHub repository: exploring code, triaging issues, opening or reviewing PRs, debugging CI, or cutting a release.",
+    "category": "development"
+  }
+}

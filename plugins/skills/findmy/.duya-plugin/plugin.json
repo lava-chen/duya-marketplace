@@ -1,0 +1,21 @@
+{
+  "name": "findmy",
+  "version": "1.0.0",
+  "description": "Track Apple devices and AirTags via FindMy.app on macOS using AppleScript and screen capture.",
+  "author": {
+    "name": "DUYA Team",
+    "url": "https://github.com/lava-chen/duya"
+  },
+  "license": "MIT",
+  "keywords": [
+    "findmy",
+    "skill",
+    "apple"
+  ],
+  "interface": {
+    "displayName": "findmy",
+    "shortDescription": "Track Apple devices and AirTags via FindMy.app on macOS using AppleScript and screen capture.",
+    "longDescription": "Track Apple devices and AirTags via FindMy.app on macOS using AppleScript and screen capture.",
+    "category": "productivity"
+  }
+}

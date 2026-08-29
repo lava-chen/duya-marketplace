@@ -1,0 +1,21 @@
+{
+  "name": "skill-creator",
+  "version": "0.1.0",
+  "description": "\"Guide for creating effective DUYA skills. Use when the user wants to create a new skill or update an existing one that extends DUYA with specialized knowledge, workflows, or tool integrations.\"",
+  "author": {
+    "name": "DUYA Team",
+    "url": "https://github.com/lava-chen/duya"
+  },
+  "license": "MIT",
+  "keywords": [
+    "skill-creator",
+    "skill",
+    "development"
+  ],
+  "interface": {
+    "displayName": "skill-creator",
+    "shortDescription": "\"Guide for creating effective DUYA skills. Use when the user wants to create a new skill or update an existing one that ",
+    "longDescription": "\"Guide for creating effective DUYA skills. Use when the user wants to create a new skill or update an existing one that extends DUYA with specialized knowledge, workflows, or tool integrations.\"",
+    "category": "development"
+  }
+}

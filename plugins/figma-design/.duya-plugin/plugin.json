@@ -1,0 +1,16 @@
+{
+  "name": "figma-design",
+  "version": "0.1.0",
+  "description": "Figma design context extraction, component mapping, implementation, and visual verification.",
+  "author": { "name": "DUYA Team", "url": "https://github.com/lava-chen/duya" },
+  "license": "MIT",
+  "keywords": ["figma", "design", "design-system", "handoff"],
+  "setup": [
+    { "id": "figmaApiKey", "label": "Figma personal access token (preferred: scoped to Dev Mode)", "type": "secret", "required": true }
+  ],
+  "interface": {
+    "displayName": "Figma Design",
+    "longDescription": "Suggest when the user works with Figma designs: extracting design context, mapping design systems, implementing components, or visually comparing implementation vs design.",
+    "category": "development"
+  }
+}
