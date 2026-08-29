@@ -1,7 +1,7 @@
 {
-  "apps": {
-    "github": {
+  "apps": [
+    {
       "id": "github"
     }
-  }
+  ]
 }

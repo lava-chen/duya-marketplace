@@ -1,0 +1,65 @@
+{
+  "name": "tencent-docs",
+  "version": "0.1.0",
+  "description": "Tencent Docs (腾讯文档, doc.qq.com) connector via the official OpenAPI. Provides the 'tencent-docs' app connection for plugins that list, search, read, create, edit, and export online documents / spreadsheets / smartsheets / forms hosted on doc.qq.com.",
+  "author": {
+    "name": "DUYA Team",
+    "url": "https://github.com/lava-chen/duya"
+  },
+  "license": "MIT",
+  "keywords": [
+    "tencent",
+    "tencent-docs",
+    "doc.qq.com",
+    "online-document",
+    "spreadsheet",
+    "smartsheet",
+    "online-form",
+    "openapi",
+    "oauth"
+  ],
+  "setup": [
+    {
+      "id": "client_id",
+      "label": "Tencent Docs Open Platform ClientId (应用 ClientId, 从开放平台后台获取)",
+      "type": "string",
+      "required": true,
+      "secret": false
+    },
+    {
+      "id": "client_secret",
+      "label": "Tencent Docs Open Platform ClientSecret (应用 ClientSecret)",
+      "type": "secret",
+      "required": true,
+      "secret": true
+    },
+    {
+      "id": "redirect_uri",
+      "label": "OAuth2 redirect_uri (回调地址, 需与开放平台后台一致)",
+      "type": "string",
+      "required": true,
+      "secret": false
+    },
+    {
+      "id": "scope",
+      "label": "授权范围 scope (空格分隔, 例如: doc:read doc:write drive:read drive:write)",
+      "type": "string",
+      "required": false,
+      "secret": false
+    }
+  ],
+  "interface": {
+    "displayName": "Tencent Docs",
+    "shortDescription": "Tencent Docs (腾讯文档, doc.qq.com) connector via the official OpenAPI. Provides the 'tencent-docs' app connection for plugins that read, edit, or export online documents, spreadsheets, and slides hosted on doc.qq.com.",
+    "longDescription": "Tencent Docs (腾讯文档) connector via the official OpenAPI documented at https://docs.qq.com/open/document/app/. Operations are dispatched through the connector registered as 'tencent-docs' in the duya AppConnectorRegistry. All API calls go through the connector — this plugin ships the connector declaration and skill documentation only; you must provide your own Tencent Docs Open Platform credentials (ClientId + ClientSecret + redirect_uri) at install time and complete the OAuth2 authorization code grant once. The OpenAPI covers five product areas: 文件管理 / 在线表格 / 在线智能表 / 在线文档 / 在线收集表.",
+    "category": "productivity",
+    "icon": "./assets/icon.svg",
+    "brandColor": "#2E72FF",
+    "defaultPrompt": [
+      "List recent documents I can access",
+      "Search for the Q3 planning spreadsheet",
+      "Create a new doc from this Markdown draft",
+      "Export this sheet to xlsx"
+    ]
+  }
+}

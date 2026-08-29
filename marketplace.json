@@ -89,18 +89,6 @@
       "category": "development"
     },
     {
-      "name": "documents",
-      "source": {
-        "source": "local",
-        "path": "./plugins/documents"
-      },
-      "policy": {
-        "installation": "available",
-        "authentication": "on_use"
-      },
-      "category": "productivity"
-    },
-    {
       "name": "figma-design",
       "source": {
         "source": "local",
@@ -281,6 +269,18 @@
       "category": "productivity"
     },
     {
+      "name": "qq-mail",
+      "source": {
+        "source": "local",
+        "path": "./plugins/qq-mail"
+      },
+      "policy": {
+        "installation": "available",
+        "authentication": "on_install"
+      },
+      "category": "productivity"
+    },
+    {
       "name": "research-paper-writing",
       "source": {
         "source": "local",
@@ -351,6 +351,18 @@
         "authentication": "on_install"
       },
       "category": "development"
+    },
+    {
+      "name": "tencent-docs",
+      "source": {
+        "source": "local",
+        "path": "./plugins/tencent-docs"
+      },
+      "policy": {
+        "installation": "available",
+        "authentication": "on_install"
+      },
+      "category": "productivity"
     },
     {
       "name": "twitter",

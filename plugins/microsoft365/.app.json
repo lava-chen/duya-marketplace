@@ -1,7 +1,7 @@
 {
-  "apps": {
-    "microsoft365": {
+  "apps": [
+    {
       "id": "microsoft365"
     }
-  }
+  ]
 }

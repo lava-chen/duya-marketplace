@@ -1,7 +1,7 @@
 {
-  "apps": {
-    "figma": {
+  "apps": [
+    {
       "id": "figma"
     }
-  }
+  ]
 }

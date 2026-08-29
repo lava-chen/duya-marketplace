@@ -198,6 +198,16 @@ DEFAULT_PROMPTS = {
         "Find files I shared this week",
         "List today's meetings and attendees",
     ],
+    "qq-mail": [
+        "Summarize unread mail in my QQ inbox",
+        "Search messages from a specific contact",
+        "Draft a reply to the latest invoice email",
+    ],
+    "tencent-docs": [
+        "Search my Tencent docs for the roadmap",
+        "Summarize this shared document",
+        "Create a doc from this conversation",
+    ],
 }
 
 TABLER_PATHS = json.loads(TABLER_JSON.read_text(encoding="utf-8"))

@@ -1,7 +1,7 @@
 {
-  "apps": {
-    "vercel": {
+  "apps": [
+    {
       "id": "vercel"
     }
-  }
+  ]
 }

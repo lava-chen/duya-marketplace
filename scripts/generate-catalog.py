@@ -61,6 +61,7 @@ AUTH_ON_INSTALL = {
     "figma-design", "linear-project-execution", "notion-knowledge",
     "sentry-debugging", "supabase-development", "vercel-deployment",
     "github-development", "google", "slack", "microsoft365",
+    "qq-mail", "tencent-docs",
 }
 
 # App declarations per plugin (plan 455-open-connector-registry D3:
@@ -85,6 +86,8 @@ APP_DECLARATIONS = {
     "google": {"google": "google"},
     "slack": {"slack": "slack"},
     "microsoft365": {"microsoft365": "microsoft365"},
+    "qq-mail": {"qq-mail": "qq-mail"},
+    "tencent-docs": {"tencent-docs": "tencent-docs"},
 }
 
 IGNORE_SHUTIL = shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store")
@@ -113,9 +116,11 @@ def write_json(path: Path, data):
 
 
 def write_app_declaration(plugin_dir: Path, apps: dict):
-    """Reference-style .app.json: {apps: {<name>: {id: <connectorId>}}}."""
+    """Upstream app-schema array shape (plan 455-open-connector-registry):
+    {apps: [{id: <connectorId>}]}. Entry keys from the codex map form are
+    dropped — the connector id is the identity."""
     write_json(plugin_dir / ".app.json", {
-        "apps": {name: {"id": cid} for name, cid in sorted(apps.items())},
+        "apps": [{"id": cid} for cid in sorted(apps.values())],
     })
 
 
@@ -127,13 +132,11 @@ def remove_stale_apps_dir(plugin_dir: Path):
 
 
 # 1. Builtin plugins ---------------------------------------------------------
-for name in BUILTINS:
-    src = SRC / "packages/plugin-core/src/plugins/builtin" / name
-    dst = PLUGINS / name
-    if dst.exists():
-        shutil.rmtree(dst)
-    copytree(src, dst)
-    print(f"builtin: {name}")
+# Builtin sources were removed from the duya repo (015738d7) — the
+# marketplace is now the only distribution source, so these directories are
+# hand-maintained here and no longer re-copied. Listed for documentation.
+BUILTINS = ["documents", "obsidian", "pdf",
+            "presentations", "spreadsheets", "wecom", "zotero"]
 
 # 2. Bundled skills -> per-skill plugins (flat under plugins/) ---------------
 for cat_dir in sorted((SRC / "packages/agent/skills").iterdir()):

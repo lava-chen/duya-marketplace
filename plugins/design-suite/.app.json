@@ -1,19 +1,19 @@
 {
-  "apps": {
-    "figma": {
+  "apps": [
+    {
       "id": "figma"
     },
-    "google-calendar": {
+    {
       "id": "google"
     },
-    "linear": {
+    {
       "id": "linear"
     },
-    "notion": {
+    {
       "id": "notion"
     },
-    "slack": {
+    {
       "id": "slack"
     }
-  }
+  ]
 }

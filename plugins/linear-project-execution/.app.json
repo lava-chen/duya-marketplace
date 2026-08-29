@@ -1,7 +1,7 @@
 {
-  "apps": {
-    "linear": {
+  "apps": [
+    {
       "id": "linear"
     }
-  }
+  ]
 }
