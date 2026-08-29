@@ -2,15 +2,31 @@
   "name": "postgres-readonly",
   "version": "0.1.0",
   "description": "Read-only PostgreSQL inspection, safe query, and data analysis.",
-  "author": { "name": "DUYA Team", "url": "https://github.com/lava-chen/duya" },
+  "author": {
+    "name": "DUYA Team",
+    "url": "https://github.com/lava-chen/duya"
+  },
   "license": "MIT",
-  "keywords": ["postgres", "postgresql", "sql", "database", "read-only"],
+  "keywords": [
+    "postgres",
+    "postgresql",
+    "sql",
+    "database",
+    "read-only"
+  ],
   "setup": [
-    { "id": "connectionString", "label": "PostgreSQL connection string — use a read-only role (e.g. duya_reader); read-only access is enforced by the database role, not an MCP flag", "type": "secret", "required": true }
+    {
+      "id": "connectionString",
+      "label": "PostgreSQL connection string — use a read-only role (e.g. duya_reader); read-only access is enforced by the database role, not an MCP flag",
+      "type": "secret",
+      "required": true
+    }
   ],
   "interface": {
     "displayName": "PostgreSQL Read-only",
     "longDescription": "Suggest when the user needs read-only PostgreSQL inspection, safe querying, or data analysis against a database.",
-    "category": "data"
+    "category": "data",
+    "icon": "./assets/icon.svg",
+    "brandColor": "#4169E1"
   }
 }

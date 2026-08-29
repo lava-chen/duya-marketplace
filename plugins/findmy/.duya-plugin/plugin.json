@@ -16,6 +16,8 @@
     "displayName": "findmy",
     "shortDescription": "Track Apple devices and AirTags via FindMy.app on macOS using AppleScript and screen capture.",
     "longDescription": "Track Apple devices and AirTags via FindMy.app on macOS using AppleScript and screen capture.",
-    "category": "productivity"
+    "category": "productivity",
+    "icon": "./assets/icon.svg",
+    "brandColor": "#000000"
   }
 }

@@ -16,6 +16,8 @@
     "displayName": "youtube",
     "shortDescription": "Extract video info, transcripts, comments, and search videos from YouTube (youtube.com). Uses InnerTube Android API to b",
     "longDescription": "Extract video info, transcripts, comments, and search videos from YouTube (youtube.com). Uses InnerTube Android API to bypass PoToken requirements and string-based XML parsing to avoid DOMParser issues.",
-    "category": "media"
+    "category": "media",
+    "icon": "./assets/icon.svg",
+    "brandColor": "#FF0000"
   }
 }

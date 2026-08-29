@@ -18,6 +18,13 @@
     "displayName": "Google Workspace",
     "shortDescription": "Google Drive, Calendar, and Gmail connector via OAuth. Provides the 'google' app connection for plugins that read files,",
     "longDescription": "Google Drive, Calendar, and Gmail connector via OAuth. Provides the 'google' app connection for plugins that read files, events, or mail.",
-    "category": "productivity"
+    "category": "productivity",
+    "icon": "./assets/icon.svg",
+    "brandColor": "#4285F4",
+    "defaultPrompt": [
+      "Find my latest Drive documents",
+      "Summarize today's calendar events",
+      "Search mail for unread invoices"
+    ]
   }
 }

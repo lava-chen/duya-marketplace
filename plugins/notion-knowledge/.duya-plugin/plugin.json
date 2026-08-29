@@ -2,15 +2,36 @@
   "name": "notion-knowledge",
   "version": "0.1.0",
   "description": "Notion workspace search, research documentation, meeting knowledge capture, database maintenance, and spec-to-task.",
-  "author": { "name": "DUYA Team", "url": "https://github.com/lava-chen/duya" },
+  "author": {
+    "name": "DUYA Team",
+    "url": "https://github.com/lava-chen/duya"
+  },
   "license": "MIT",
-  "keywords": ["notion", "docs", "knowledge", "research", "meeting-notes"],
+  "keywords": [
+    "notion",
+    "docs",
+    "knowledge",
+    "research",
+    "meeting-notes"
+  ],
   "setup": [
-    { "id": "notionApiKey", "label": "Notion internal integration token (scoped to specific pages)", "type": "secret", "required": true }
+    {
+      "id": "notionApiKey",
+      "label": "Notion internal integration token (scoped to specific pages)",
+      "type": "secret",
+      "required": true
+    }
   ],
   "interface": {
     "displayName": "Notion Knowledge",
     "longDescription": "Suggest when the user works with Notion: workspace search, research documentation, meeting knowledge capture, database maintenance, or spec-to-task.",
-    "category": "productivity"
+    "category": "productivity",
+    "icon": "./assets/icon.svg",
+    "brandColor": "#111111",
+    "defaultPrompt": [
+      "Search my Notion for the onboarding doc",
+      "Turn this conversation into meeting notes",
+      "Find spec pages that are missing owners"
+    ]
   }
 }

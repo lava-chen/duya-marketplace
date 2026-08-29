@@ -16,6 +16,8 @@
     "displayName": "agent-create",
     "shortDescription": "\"Guide for creating custom DUYA agents described in ~/.duya/config.toml under [agents.<id>]. Use when the user wants to ",
     "longDescription": "\"Guide for creating custom DUYA agents described in ~/.duya/config.toml under [agents.<id>]. Use when the user wants to create a new custom agent, add a new agent to the chat agent picker, set up a per-agent workspace/AGENTS.md, or otherwise says they want to 'create an agent' (e.g. invoking the `duya agent create` CLI flow).\"",
-    "category": "development"
+    "category": "development",
+    "icon": "./assets/icon.svg",
+    "brandColor": "#4F46E5"
   }
 }

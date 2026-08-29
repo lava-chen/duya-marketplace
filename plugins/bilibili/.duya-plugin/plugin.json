@@ -16,6 +16,8 @@
     "displayName": "bilibili",
     "shortDescription": "Extract video info, subtitles, comments, and search videos from Bilibili (bilibili.com). Uses WBI-signed API calls to by",
     "longDescription": "Extract video info, subtitles, comments, and search videos from Bilibili (bilibili.com). Uses WBI-signed API calls to bypass风控 restrictions and properly fetch subtitle data.",
-    "category": "media"
+    "category": "media",
+    "icon": "./assets/icon.svg",
+    "brandColor": "#00A1D6"
   }
 }

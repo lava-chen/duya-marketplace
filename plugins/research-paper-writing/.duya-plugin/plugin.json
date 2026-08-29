@@ -16,6 +16,8 @@
     "displayName": "research-paper-writing",
     "shortDescription": "End-to-end pipeline for writing ML/AI research papers — from experiment design through analysis, drafting, revision, and",
     "longDescription": "End-to-end pipeline for writing ML/AI research papers — from experiment design through analysis, drafting, revision, and submission. Covers NeurIPS, ICML, ICLR, ACL, AAAI, COLM. Integrates automated experiment monitoring, statistical analysis, iterative writing, and citation verification.",
-    "category": "research"
+    "category": "research",
+    "icon": "./assets/icon.svg",
+    "brandColor": "#4F46E5"
   }
 }

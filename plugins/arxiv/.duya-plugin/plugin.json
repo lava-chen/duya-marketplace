@@ -16,6 +16,8 @@
     "displayName": "arxiv",
     "shortDescription": "Search and retrieve academic papers from arXiv using their free REST API. No API key needed. Search by keyword, author, ",
     "longDescription": "Search and retrieve academic papers from arXiv using their free REST API. No API key needed. Search by keyword, author, category, or ID. Combine with web_extract or the ocr-and-documents skill to read full paper content.",
-    "category": "research"
+    "category": "research",
+    "icon": "./assets/icon.svg",
+    "brandColor": "#B31B1B"
   }
 }

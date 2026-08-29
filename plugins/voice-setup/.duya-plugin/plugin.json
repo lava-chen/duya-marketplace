@@ -16,6 +16,8 @@
     "displayName": "voice-setup",
     "shortDescription": "Configure DUYA voice input (whisper.cpp local STT or OpenAI-compatible cloud STT) through the `duya_cli` control plane. ",
     "longDescription": "Whenever DUYA voice input needs first-use configuration or a whisper environment / STT engine is missing or misconfigured.",
-    "category": "productivity"
+    "category": "productivity",
+    "icon": "./assets/icon.svg",
+    "brandColor": "#4F46E5"
   }
 }

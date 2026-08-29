@@ -19,6 +19,13 @@
     "displayName": "Microsoft 365",
     "shortDescription": "Microsoft 365 connector via OAuth. Provides the 'microsoft365' app connection for plugins that work with Outlook, OneDri",
     "longDescription": "Microsoft 365 connector via OAuth. Provides the 'microsoft365' app connection for plugins that work with Outlook, OneDrive, or Teams content.",
-    "category": "productivity"
+    "category": "productivity",
+    "icon": "./assets/icon.svg",
+    "brandColor": "#00ADEF",
+    "defaultPrompt": [
+      "Summarize my unread Outlook mail",
+      "Find files I shared this week",
+      "List today's meetings and attendees"
+    ]
   }
 }

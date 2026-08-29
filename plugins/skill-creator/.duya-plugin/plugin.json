@@ -16,6 +16,8 @@
     "displayName": "skill-creator",
     "shortDescription": "\"Guide for creating effective DUYA skills. Use when the user wants to create a new skill or update an existing one that ",
     "longDescription": "\"Guide for creating effective DUYA skills. Use when the user wants to create a new skill or update an existing one that extends DUYA with specialized knowledge, workflows, or tool integrations.\"",
-    "category": "development"
+    "category": "development",
+    "icon": "./assets/icon.svg",
+    "brandColor": "#4F46E5"
   }
 }

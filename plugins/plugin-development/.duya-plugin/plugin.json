@@ -16,6 +16,8 @@
     "displayName": "plugin-development",
     "shortDescription": "\"Create DUYA plugins with valid `plugin.json` manifests matching the `duya.plugin.v1` schema. Use when the user wants to",
     "longDescription": "\"Create DUYA plugins with valid `plugin.json` manifests matching the `duya.plugin.v1` schema. Use when the user wants to create a new plugin, add plugin capabilities (skills/hooks/MCP/CLI/UI), generate marketplace entries, or update an existing local plugin during development.\"",
-    "category": "development"
+    "category": "development",
+    "icon": "./assets/icon.svg",
+    "brandColor": "#4F46E5"
   }
 }

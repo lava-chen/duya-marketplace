@@ -16,6 +16,8 @@
     "displayName": "weixin-mp",
     "shortDescription": "Extract and download WeChat Official Account articles (mp.weixin.qq.com). Convert articles to Markdown with images, code",
     "longDescription": "Extract and download WeChat Official Account articles (mp.weixin.qq.com). Convert articles to Markdown with images, code blocks, and metadata. Handles anti-bot verification detection.",
-    "category": "media"
+    "category": "media",
+    "icon": "./assets/icon.svg",
+    "brandColor": "#07C160"
   }
 }

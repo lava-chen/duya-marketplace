@@ -16,6 +16,8 @@
     "displayName": "apple-reminders",
     "shortDescription": "Manage Apple Reminders via remindctl CLI (list, add, complete, delete).",
     "longDescription": "Manage Apple Reminders via remindctl CLI (list, add, complete, delete).",
-    "category": "productivity"
+    "category": "productivity",
+    "icon": "./assets/icon.svg",
+    "brandColor": "#000000"
   }
 }

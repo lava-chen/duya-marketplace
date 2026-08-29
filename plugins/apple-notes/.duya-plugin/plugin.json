@@ -16,6 +16,8 @@
     "displayName": "apple-notes",
     "shortDescription": "Manage Apple Notes via the memo CLI on macOS (create, view, search, edit).",
     "longDescription": "Manage Apple Notes via the memo CLI on macOS (create, view, search, edit).",
-    "category": "productivity"
+    "category": "productivity",
+    "icon": "./assets/icon.svg",
+    "brandColor": "#000000"
   }
 }

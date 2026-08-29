@@ -17,6 +17,13 @@
     "displayName": "Slack",
     "shortDescription": "Slack workspace connector via OAuth. Provides the 'slack' app connection for plugins that post or read channel messages.",
     "longDescription": "Slack workspace connector via OAuth. Provides the 'slack' app connection for plugins that post or read channel messages.",
-    "category": "communication"
+    "category": "communication",
+    "icon": "./assets/icon.svg",
+    "brandColor": "#E01E5A",
+    "defaultPrompt": [
+      "Summarize unread messages in #dev",
+      "Post this update to the team channel",
+      "Find the thread about the outage"
+    ]
   }
 }
