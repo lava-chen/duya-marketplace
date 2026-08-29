@@ -1,9 +1,0 @@
-[
-  {
-    "id": "slack",
-    "provider": "slack",
-    "scopes": [],
-    "toolsets": [],
-    "required": true
-  }
-]

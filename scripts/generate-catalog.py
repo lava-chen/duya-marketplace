@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
-"""Populate the duya-marketplace repo (plan 455 / plan 313).
+"""Populate the duya-marketplace repo (plan 455 / plan 313 / plan 455-open-connector-registry).
 
-- Copies the 9 builtin plugins from packages/plugin-core/src/plugins/builtin/
-- Wraps every bundled skill (packages/agent/skills) as an installable plugin
-- Adds connector plugins for app providers not yet covered
+- Copies builtin plugins from packages/plugin-core/src/plugins/builtin/
+  (skipping github/notion — superseded by the richer plan-313 packs
+  github-development / notion-knowledge, which receive their app declarations)
+- Wraps every bundled skill (packages/agent/skills) as an installable plugin,
+  flat under plugins/<skill-name>/
+- Adds connector plugins for app providers without a dedicated plugin
+- App declarations use <pluginDir>/.app.json (plan 455-open-connector-registry
+  D3, codex PluginAppFile parity — reference-style subset {apps: {name: {id}}})
 - Rewrites marketplace.json into the plan-455 catalog schema
 """
 import json
@@ -15,7 +20,10 @@ SRC = Path("E:/Projects/duya")
 MKT = Path("E:/Projects/duya-marketplace/duya-marketplace")
 PLUGINS = MKT / "plugins"
 
-BUILTINS = ["documents", "github", "notion", "obsidian", "pdf",
+# Builtin plugins mirrored into the marketplace. github/notion are excluded:
+# the plan-313 packs github-development / notion-knowledge supersede them and
+# carry their app connections via .app.json.
+BUILTINS = ["documents", "obsidian", "pdf",
             "presentations", "spreadsheets", "wecom", "zotero"]
 
 CONNECTORS = {
@@ -47,6 +55,38 @@ SKILL_CATEGORY_TO_PLUGIN_CATEGORY = {
     "research": "research",
 }
 
+# Plugins whose app connection should be prompted at install time
+# (catalog policy.authentication = on_install).
+AUTH_ON_INSTALL = {
+    "figma-design", "linear-project-execution", "notion-knowledge",
+    "sentry-debugging", "supabase-development", "vercel-deployment",
+    "github-development", "google", "slack", "microsoft365",
+}
+
+# App declarations per plugin (plan 455-open-connector-registry D3:
+# <pluginDir>/.app.json, codex PluginAppFile reference-style subset).
+APP_DECLARATIONS = {
+    "figma-design": {"figma": "figma"},
+    "linear-project-execution": {"linear": "linear"},
+    "notion-knowledge": {"notion": "notion"},
+    "sentry-debugging": {"sentry": "sentry"},
+    "supabase-development": {"supabase": "supabase"},
+    "vercel-deployment": {"vercel": "vercel"},
+    "github-development": {"github": "github"},
+    # design-suite's apps are optional integrations (previously
+    # required: false) — stays authentication: on_use.
+    "design-suite": {
+        "figma": "figma",
+        "slack": "slack",
+        "linear": "linear",
+        "notion": "notion",
+        "google-calendar": "google",
+    },
+    "google": {"google": "google"},
+    "slack": {"slack": "slack"},
+    "microsoft365": {"microsoft365": "microsoft365"},
+}
+
 IGNORE_SHUTIL = shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store")
 
 
@@ -66,11 +106,24 @@ def copytree(src: Path, dst: Path):
     shutil.copytree(src, dst, ignore=IGNORE_SHUTIL, dirs_exist_ok=True)
 
 
-def write_plugin_manifest(plugin_dir: Path, manifest: dict):
-    d = plugin_dir / ".duya-plugin"
-    d.mkdir(parents=True, exist_ok=True)
-    (d / "plugin.json").write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+def write_json(path: Path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8")
+
+
+def write_app_declaration(plugin_dir: Path, apps: dict):
+    """Reference-style .app.json: {apps: {<name>: {id: <connectorId>}}}."""
+    write_json(plugin_dir / ".app.json", {
+        "apps": {name: {"id": cid} for name, cid in sorted(apps.items())},
+    })
+
+
+def remove_stale_apps_dir(plugin_dir: Path):
+    """Retire the legacy apps/connections.json layout (plan 455 D3)."""
+    legacy = plugin_dir / "apps"
+    if legacy.is_dir():
+        shutil.rmtree(legacy)
 
 
 # 1. Builtin plugins ---------------------------------------------------------
@@ -82,9 +135,7 @@ for name in BUILTINS:
     copytree(src, dst)
     print(f"builtin: {name}")
 
-# 2. Bundled skills -> per-skill plugins --------------------------------------
-entries = []  # (name, category, auth_on_install)
-
+# 2. Bundled skills -> per-skill plugins (flat under plugins/) ---------------
 for cat_dir in sorted((SRC / "packages/agent/skills").iterdir()):
     if not cat_dir.is_dir() or cat_dir.name.startswith("."):
         continue
@@ -97,17 +148,15 @@ for cat_dir in sorted((SRC / "packages/agent/skills").iterdir()):
         meta = parse_frontmatter(skill_src / "SKILL.md")
         version = meta.get("version", "0.1.0")
         description = meta.get("description", f"DUYA skill: {skill_name}")
-        if cat_dir.name == "voice-setup":
-            category = "productivity"
-        else:
-            category = SKILL_CATEGORY_TO_PLUGIN_CATEGORY[cat_dir.name]
-        dst = PLUGINS / "skills" / skill_name
+        category = ("productivity" if cat_dir.name == "voice-setup"
+                    else SKILL_CATEGORY_TO_PLUGIN_CATEGORY[cat_dir.name])
+        dst = PLUGINS / skill_name
         if dst.exists():
             shutil.rmtree(dst)
         dst.mkdir(parents=True)
         shutil.copytree(skill_src, dst / "skills" / skill_name,
                         ignore=IGNORE_SHUTIL)
-        write_plugin_manifest(dst, {
+        write_json(dst / ".duya-plugin" / "plugin.json", {
             "name": skill_name,
             "version": version,
             "description": description,
@@ -121,16 +170,20 @@ for cat_dir in sorted((SRC / "packages/agent/skills").iterdir()):
                 "category": category,
             },
         })
-        entries.append((f"skills/{skill_name}", skill_name, category, "on_use"))
         print(f"skill: {skill_name} ({cat_dir.name})")
+
+# Remove the previous nested packaging (plugins/skills/) if present.
+if (PLUGINS / "skills").is_dir():
+    shutil.rmtree(PLUGINS / "skills")
+    print("removed stale plugins/skills/ nesting")
 
 # 3. Connector plugins ---------------------------------------------------------
 for provider, info in CONNECTORS.items():
     dst = PLUGINS / provider
     if dst.exists():
         shutil.rmtree(dst)
-    (dst / "apps").mkdir(parents=True)
-    write_plugin_manifest(dst, {
+    dst.mkdir(parents=True)
+    write_json(dst / ".duya-plugin" / "plugin.json", {
         "name": provider,
         "version": "0.1.0",
         "description": info["description"],
@@ -144,17 +197,24 @@ for provider, info in CONNECTORS.items():
             "category": info["category"],
         },
     })
-    (dst / "apps" / "connections.json").write_text(
-        json.dumps([{
-            "id": provider,
-            "provider": provider,
-            "scopes": [],
-            "toolsets": [],
-            "required": True,
-        }], ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_app_declaration(dst, APP_DECLARATIONS[provider])
     print(f"connector: {provider}")
 
-# 4. Catalog entries for every plugin dir --------------------------------------
+# 4. App declarations for plan-313 packs (+ dedupe bookkeeping) ---------------
+for name, apps in APP_DECLARATIONS.items():
+    plugin_dir = PLUGINS / name
+    if plugin_dir.is_dir() and name not in CONNECTORS:
+        write_app_declaration(plugin_dir, apps)
+        remove_stale_apps_dir(plugin_dir)
+        print(f"app declaration: {name} -> {sorted(apps)}")# Remove superseded duplicate plugins (builtin github/notion are replaced by
+# the plan-313 packs github-development / notion-knowledge).
+for dup in ("github", "notion"):
+    dup_dir = PLUGINS / dup
+    if dup_dir.is_dir():
+        shutil.rmtree(dup_dir)
+        print(f"removed duplicate: {dup} (superseded by plan-313 pack)")
+
+# 5. Catalog entries for every plugin dir --------------------------------------
 def plugin_category(plugin_dir: Path, fallback: str) -> str:
     mf = plugin_dir / ".duya-plugin" / "plugin.json"
     try:
@@ -168,27 +228,12 @@ def plugin_category(plugin_dir: Path, fallback: str) -> str:
 
 
 catalog = []
-plugin_dirs = [d for d in sorted(PLUGINS.iterdir())
-               if d.is_dir() and not d.name.startswith(".") and d.name != "skills"]
-# Skill plugins live one level deeper (plugins/skills/<name>/).
-skills_root = PLUGINS / "skills"
-if skills_root.is_dir():
-    plugin_dirs += [d for d in sorted(skills_root.iterdir())
-                    if d.is_dir() and not d.name.startswith(".")]
-for plugin_dir in plugin_dirs:
-    rel = f"./plugins/{plugin_dir.relative_to(PLUGINS).as_posix()}"
+for plugin_dir in sorted(PLUGINS.iterdir()):
+    if not plugin_dir.is_dir() or plugin_dir.name.startswith("."):
+        continue
+    rel = f"./plugins/{plugin_dir.name}"
     category = plugin_category(plugin_dir, "other")
-    # on_install when the plugin requires an app connection at setup time
-    auth = "on_use"
-    conn = plugin_dir / "apps" / "connections.json"
-    if conn.exists():
-        try:
-            decls = json.loads(conn.read_text(encoding="utf-8"))
-            if isinstance(decls, list) and any(
-                    isinstance(d, dict) and d.get("required") for d in decls):
-                auth = "on_install"
-        except Exception:
-            pass
+    auth = "on_install" if plugin_dir.name in AUTH_ON_INSTALL else "on_use"
     catalog.append({
         "name": plugin_dir.name,
         "source": {"source": "local", "path": rel},
@@ -196,11 +241,9 @@ for plugin_dir in plugin_dirs:
         "category": category,
     })
 
-manifest = {
+write_json(MKT / "marketplace.json", {
     "name": "duya-official",
     "interface": {"displayName": "DUYA Official"},
     "plugins": catalog,
-}
-(MKT / "marketplace.json").write_text(
-    json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+})
 print(f"marketplace.json: {len(catalog)} entries")

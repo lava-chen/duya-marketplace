@@ -1,9 +1,0 @@
-[
-  {
-    "id": "github",
-    "provider": "github",
-    "scopes": [],
-    "toolsets": [],
-    "required": true
-  }
-]

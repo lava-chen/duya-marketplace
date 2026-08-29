@@ -1,0 +1,7 @@
+{
+  "apps": {
+    "sentry": {
+      "id": "sentry"
+    }
+  }
+}

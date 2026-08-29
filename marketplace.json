@@ -5,6 +5,78 @@
   },
   "plugins": [
     {
+      "name": "agent-create",
+      "source": {
+        "source": "local",
+        "path": "./plugins/agent-create"
+      },
+      "policy": {
+        "installation": "available",
+        "authentication": "on_use"
+      },
+      "category": "development"
+    },
+    {
+      "name": "apple-notes",
+      "source": {
+        "source": "local",
+        "path": "./plugins/apple-notes"
+      },
+      "policy": {
+        "installation": "available",
+        "authentication": "on_use"
+      },
+      "category": "productivity"
+    },
+    {
+      "name": "apple-reminders",
+      "source": {
+        "source": "local",
+        "path": "./plugins/apple-reminders"
+      },
+      "policy": {
+        "installation": "available",
+        "authentication": "on_use"
+      },
+      "category": "productivity"
+    },
+    {
+      "name": "arxiv",
+      "source": {
+        "source": "local",
+        "path": "./plugins/arxiv"
+      },
+      "policy": {
+        "installation": "available",
+        "authentication": "on_use"
+      },
+      "category": "research"
+    },
+    {
+      "name": "bilibili",
+      "source": {
+        "source": "local",
+        "path": "./plugins/bilibili"
+      },
+      "policy": {
+        "installation": "available",
+        "authentication": "on_use"
+      },
+      "category": "media"
+    },
+    {
+      "name": "conductor-canvas-control",
+      "source": {
+        "source": "local",
+        "path": "./plugins/conductor-canvas-control"
+      },
+      "policy": {
+        "installation": "available",
+        "authentication": "on_use"
+      },
+      "category": "development"
+    },
+    {
       "name": "design-suite",
       "source": {
         "source": "local",
@@ -41,16 +113,16 @@
       "category": "development"
     },
     {
-      "name": "github",
+      "name": "findmy",
       "source": {
         "source": "local",
-        "path": "./plugins/github"
+        "path": "./plugins/findmy"
       },
       "policy": {
         "installation": "available",
-        "authentication": "on_install"
+        "authentication": "on_use"
       },
-      "category": "development"
+      "category": "productivity"
     },
     {
       "name": "github-development",
@@ -60,7 +132,7 @@
       },
       "policy": {
         "installation": "available",
-        "authentication": "on_use"
+        "authentication": "on_install"
       },
       "category": "development"
     },
@@ -73,6 +145,18 @@
       "policy": {
         "installation": "available",
         "authentication": "on_install"
+      },
+      "category": "productivity"
+    },
+    {
+      "name": "imessage",
+      "source": {
+        "source": "local",
+        "path": "./plugins/imessage"
+      },
+      "policy": {
+        "installation": "available",
+        "authentication": "on_use"
       },
       "category": "productivity"
     },
@@ -105,18 +189,6 @@
       "source": {
         "source": "local",
         "path": "./plugins/microsoft365"
-      },
-      "policy": {
-        "installation": "available",
-        "authentication": "on_install"
-      },
-      "category": "productivity"
-    },
-    {
-      "name": "notion",
-      "source": {
-        "source": "local",
-        "path": "./plugins/notion"
       },
       "policy": {
         "installation": "available",
@@ -173,6 +245,18 @@
       "category": "automation"
     },
     {
+      "name": "plugin-development",
+      "source": {
+        "source": "local",
+        "path": "./plugins/plugin-development"
+      },
+      "policy": {
+        "installation": "available",
+        "authentication": "on_use"
+      },
+      "category": "development"
+    },
+    {
       "name": "postgres-readonly",
       "source": {
         "source": "local",
@@ -197,6 +281,18 @@
       "category": "productivity"
     },
     {
+      "name": "research-paper-writing",
+      "source": {
+        "source": "local",
+        "path": "./plugins/research-paper-writing"
+      },
+      "policy": {
+        "installation": "available",
+        "authentication": "on_use"
+      },
+      "category": "research"
+    },
+    {
       "name": "sentry-debugging",
       "source": {
         "source": "local",
@@ -205,6 +301,18 @@
       "policy": {
         "installation": "available",
         "authentication": "on_install"
+      },
+      "category": "development"
+    },
+    {
+      "name": "skill-creator",
+      "source": {
+        "source": "local",
+        "path": "./plugins/skill-creator"
+      },
+      "policy": {
+        "installation": "available",
+        "authentication": "on_use"
       },
       "category": "development"
     },
@@ -245,6 +353,18 @@
       "category": "development"
     },
     {
+      "name": "twitter",
+      "source": {
+        "source": "local",
+        "path": "./plugins/twitter"
+      },
+      "policy": {
+        "installation": "available",
+        "authentication": "on_use"
+      },
+      "category": "media"
+    },
+    {
       "name": "vercel-deployment",
       "source": {
         "source": "local",
@@ -255,6 +375,18 @@
         "authentication": "on_install"
       },
       "category": "development"
+    },
+    {
+      "name": "voice-setup",
+      "source": {
+        "source": "local",
+        "path": "./plugins/voice-setup"
+      },
+      "policy": {
+        "installation": "available",
+        "authentication": "on_use"
+      },
+      "category": "productivity"
     },
     {
       "name": "wecom",
@@ -269,178 +401,10 @@
       "category": "communication"
     },
     {
-      "name": "zotero",
-      "source": {
-        "source": "local",
-        "path": "./plugins/zotero"
-      },
-      "policy": {
-        "installation": "available",
-        "authentication": "on_use"
-      },
-      "category": "research"
-    },
-    {
-      "name": "agent-create",
-      "source": {
-        "source": "local",
-        "path": "./plugins/skills/agent-create"
-      },
-      "policy": {
-        "installation": "available",
-        "authentication": "on_use"
-      },
-      "category": "development"
-    },
-    {
-      "name": "apple-notes",
-      "source": {
-        "source": "local",
-        "path": "./plugins/skills/apple-notes"
-      },
-      "policy": {
-        "installation": "available",
-        "authentication": "on_use"
-      },
-      "category": "productivity"
-    },
-    {
-      "name": "apple-reminders",
-      "source": {
-        "source": "local",
-        "path": "./plugins/skills/apple-reminders"
-      },
-      "policy": {
-        "installation": "available",
-        "authentication": "on_use"
-      },
-      "category": "productivity"
-    },
-    {
-      "name": "arxiv",
-      "source": {
-        "source": "local",
-        "path": "./plugins/skills/arxiv"
-      },
-      "policy": {
-        "installation": "available",
-        "authentication": "on_use"
-      },
-      "category": "research"
-    },
-    {
-      "name": "bilibili",
-      "source": {
-        "source": "local",
-        "path": "./plugins/skills/bilibili"
-      },
-      "policy": {
-        "installation": "available",
-        "authentication": "on_use"
-      },
-      "category": "media"
-    },
-    {
-      "name": "conductor-canvas-control",
-      "source": {
-        "source": "local",
-        "path": "./plugins/skills/conductor-canvas-control"
-      },
-      "policy": {
-        "installation": "available",
-        "authentication": "on_use"
-      },
-      "category": "development"
-    },
-    {
-      "name": "findmy",
-      "source": {
-        "source": "local",
-        "path": "./plugins/skills/findmy"
-      },
-      "policy": {
-        "installation": "available",
-        "authentication": "on_use"
-      },
-      "category": "productivity"
-    },
-    {
-      "name": "imessage",
-      "source": {
-        "source": "local",
-        "path": "./plugins/skills/imessage"
-      },
-      "policy": {
-        "installation": "available",
-        "authentication": "on_use"
-      },
-      "category": "productivity"
-    },
-    {
-      "name": "plugin-development",
-      "source": {
-        "source": "local",
-        "path": "./plugins/skills/plugin-development"
-      },
-      "policy": {
-        "installation": "available",
-        "authentication": "on_use"
-      },
-      "category": "development"
-    },
-    {
-      "name": "research-paper-writing",
-      "source": {
-        "source": "local",
-        "path": "./plugins/skills/research-paper-writing"
-      },
-      "policy": {
-        "installation": "available",
-        "authentication": "on_use"
-      },
-      "category": "research"
-    },
-    {
-      "name": "skill-creator",
-      "source": {
-        "source": "local",
-        "path": "./plugins/skills/skill-creator"
-      },
-      "policy": {
-        "installation": "available",
-        "authentication": "on_use"
-      },
-      "category": "development"
-    },
-    {
-      "name": "twitter",
-      "source": {
-        "source": "local",
-        "path": "./plugins/skills/twitter"
-      },
-      "policy": {
-        "installation": "available",
-        "authentication": "on_use"
-      },
-      "category": "media"
-    },
-    {
-      "name": "voice-setup",
-      "source": {
-        "source": "local",
-        "path": "./plugins/skills/voice-setup"
-      },
-      "policy": {
-        "installation": "available",
-        "authentication": "on_use"
-      },
-      "category": "productivity"
-    },
-    {
       "name": "weixin-mp",
       "source": {
         "source": "local",
-        "path": "./plugins/skills/weixin-mp"
+        "path": "./plugins/weixin-mp"
       },
       "policy": {
         "installation": "available",
@@ -452,13 +416,25 @@
       "name": "youtube",
       "source": {
         "source": "local",
-        "path": "./plugins/skills/youtube"
+        "path": "./plugins/youtube"
       },
       "policy": {
         "installation": "available",
         "authentication": "on_use"
       },
       "category": "media"
+    },
+    {
+      "name": "zotero",
+      "source": {
+        "source": "local",
+        "path": "./plugins/zotero"
+      },
+      "policy": {
+        "installation": "available",
+        "authentication": "on_use"
+      },
+      "category": "research"
     }
   ]
 }

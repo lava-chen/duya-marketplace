@@ -1,9 +1,0 @@
-[
-  {
-    "id": "microsoft365",
-    "provider": "microsoft365",
-    "scopes": [],
-    "toolsets": [],
-    "required": true
-  }
-]

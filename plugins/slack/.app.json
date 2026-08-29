@@ -1,0 +1,7 @@
+{
+  "apps": {
+    "slack": {
+      "id": "slack"
+    }
+  }
+}

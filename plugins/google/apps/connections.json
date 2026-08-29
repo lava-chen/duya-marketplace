@@ -1,9 +1,0 @@
-[
-  {
-    "id": "google",
-    "provider": "google",
-    "scopes": [],
-    "toolsets": [],
-    "required": true
-  }
-]
