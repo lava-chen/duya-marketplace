@@ -1,0 +1,52 @@
+{
+  "name": "apple",
+  "version": "1.0.0",
+  "description": "Apple ecosystem integration: Notes, Reminders, Find My, and iMessage — all in one macOS-only suite.",
+  "author": {
+    "name": "DUYA Team",
+    "url": "https://github.com/lava-chen/duya"
+  },
+  "license": "MIT",
+  "keywords": [
+    "apple",
+    "notes",
+    "reminders",
+    "findmy",
+    "find-my",
+    "imessage",
+    "icloud",
+    "macos"
+  ],
+  "interface": {
+    "displayName": "Apple Suite",
+    "shortDescription": "Apple ecosystem integration for Notes, Reminders, Find My, and iMessage on macOS.",
+    "longDescription": "Apple ecosystem integration for Notes, Reminders, Find My, and iMessage on macOS. All four capabilities are bundled under one plugin, each accessible as a standalone skill. Requires macOS with the respective Apple apps signed into iCloud.",
+    "category": "productivity",
+    "icon": "./assets/icon.svg",
+    "brandColor": "#000000",
+    "defaultPrompt": [
+      "Create a note in Apple Notes",
+      "Add a reminder for tomorrow",
+      "Where is my AirTag?",
+      "Text mom via iMessage"
+    ]
+  },
+  "skills": [
+    {
+      "name": "apple-notes",
+      "description": "Manage Apple Notes via the memo CLI on macOS (create, view, search, edit)."
+    },
+    {
+      "name": "apple-reminders",
+      "description": "Manage Apple Reminders via remindctl CLI (list, add, complete, delete)."
+    },
+    {
+      "name": "findmy",
+      "description": "Track Apple devices and AirTags via FindMy.app on macOS using AppleScript and screen capture."
+    },
+    {
+      "name": "imessage",
+      "description": "Send and receive iMessages/SMS via the imsg CLI on macOS."
+    }
+  ]
+}

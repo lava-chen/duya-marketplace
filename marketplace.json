@@ -17,22 +17,10 @@
       "category": "development"
     },
     {
-      "name": "apple-notes",
+      "name": "apple",
       "source": {
         "source": "local",
-        "path": "./plugins/apple-notes"
-      },
-      "policy": {
-        "installation": "available",
-        "authentication": "on_use"
-      },
-      "category": "productivity"
-    },
-    {
-      "name": "apple-reminders",
-      "source": {
-        "source": "local",
-        "path": "./plugins/apple-reminders"
+        "path": "./plugins/apple"
       },
       "policy": {
         "installation": "available",
@@ -77,40 +65,16 @@
       "category": "development"
     },
     {
-      "name": "design-suite",
+      "name": "design",
       "source": {
         "source": "local",
-        "path": "./plugins/design-suite"
+        "path": "./plugins/design"
       },
       "policy": {
         "installation": "available",
         "authentication": "on_use"
       },
       "category": "development"
-    },
-    {
-      "name": "figma-design",
-      "source": {
-        "source": "local",
-        "path": "./plugins/figma-design"
-      },
-      "policy": {
-        "installation": "available",
-        "authentication": "on_install"
-      },
-      "category": "development"
-    },
-    {
-      "name": "findmy",
-      "source": {
-        "source": "local",
-        "path": "./plugins/findmy"
-      },
-      "policy": {
-        "installation": "available",
-        "authentication": "on_use"
-      },
-      "category": "productivity"
     },
     {
       "name": "github-development",
@@ -133,18 +97,6 @@
       "policy": {
         "installation": "available",
         "authentication": "on_install"
-      },
-      "category": "productivity"
-    },
-    {
-      "name": "imessage",
-      "source": {
-        "source": "local",
-        "path": "./plugins/imessage"
-      },
-      "policy": {
-        "installation": "available",
-        "authentication": "on_use"
       },
       "category": "productivity"
     },
@@ -185,10 +137,10 @@
       "category": "productivity"
     },
     {
-      "name": "notion-knowledge",
+      "name": "notion",
       "source": {
         "source": "local",
-        "path": "./plugins/notion-knowledge"
+        "path": "./plugins/notion"
       },
       "policy": {
         "installation": "available",
@@ -221,18 +173,6 @@
       "category": "productivity"
     },
     {
-      "name": "playwright-web-operator",
-      "source": {
-        "source": "local",
-        "path": "./plugins/playwright-web-operator"
-      },
-      "policy": {
-        "installation": "available",
-        "authentication": "on_use"
-      },
-      "category": "automation"
-    },
-    {
       "name": "plugin-development",
       "source": {
         "source": "local",
@@ -245,16 +185,16 @@
       "category": "development"
     },
     {
-      "name": "postgres-readonly",
+      "name": "playwright",
       "source": {
         "source": "local",
-        "path": "./plugins/postgres-readonly"
+        "path": "./plugins/playwright"
       },
       "policy": {
         "installation": "available",
         "authentication": "on_use"
       },
-      "category": "data"
+      "category": "automation"
     },
     {
       "name": "presentations",
@@ -341,10 +281,10 @@
       "category": "productivity"
     },
     {
-      "name": "supabase-development",
+      "name": "supabase",
       "source": {
         "source": "local",
-        "path": "./plugins/supabase-development"
+        "path": "./plugins/supabase"
       },
       "policy": {
         "installation": "available",
@@ -377,10 +317,10 @@
       "category": "media"
     },
     {
-      "name": "vercel-deployment",
+      "name": "vercel",
       "source": {
         "source": "local",
-        "path": "./plugins/vercel-deployment"
+        "path": "./plugins/vercel"
       },
       "policy": {
         "installation": "available",

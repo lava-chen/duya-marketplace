@@ -1,0 +1,87 @@
+{
+  "name": "supabase",
+  "version": "1.0.0",
+  "description": "Supabase and PostgreSQL integration — Postgres migrations, Edge Functions, auth, RLS, data analysis, safe querying, and schema inspection.",
+  "author": {
+    "name": "DUYA Team",
+    "url": "https://github.com/lava-chen/duya"
+  },
+  "license": "MIT",
+  "keywords": [
+    "supabase",
+    "postgres",
+    "postgresql",
+    "migrations",
+    "edge-functions",
+    "auth",
+    "rls",
+    "sql",
+    "database",
+    "read-only",
+    "data-analysis"
+  ],
+  "setup": [
+    {
+      "id": "supabaseAccessToken",
+      "label": "Supabase personal access token (Project Settings > API)",
+      "type": "secret",
+      "required": true
+    },
+    {
+      "id": "supabaseProjectRef",
+      "label": "Supabase project ref (Project Settings > API)",
+      "type": "text",
+      "required": true
+    },
+    {
+      "id": "connectionString",
+      "label": "PostgreSQL connection string — use a read-only role (e.g. duya_reader); read-only access is enforced by the database role",
+      "type": "secret",
+      "required": true
+    }
+  ],
+  "interface": {
+    "displayName": "Supabase",
+    "shortDescription": "Supabase and PostgreSQL integration — migrations, Edge Functions, auth, data analysis, and schema inspection.",
+    "longDescription": "Supabase and PostgreSQL integration for development and read-only data workflows. Covers Postgres migrations, Edge Functions, auth and RLS audit, data analysis, safe querying, and schema inspection. Supersedes the former supabase-development and postgres-readonly plugins. Use the sub-skill appropriate to your task.",
+    "category": "development",
+    "icon": "./assets/icon.svg",
+    "brandColor": "#3FCF8E",
+    "defaultPrompt": [
+      "Review my Supabase migrations",
+      "Audit RLS policies on public tables",
+      "Run a safe SELECT query on the users table",
+      "Analyze data distribution in the events table"
+    ]
+  },
+  "skills": [
+    {
+      "name": "auth-and-security",
+      "description": "Audit Supabase auth configuration, RLS coverage, and service-role key exposure."
+    },
+    {
+      "name": "edge-function-workflow",
+      "description": "Draft, review, and manage Supabase Edge Functions for webhook handling and serverless logic."
+    },
+    {
+      "name": "migration-workflow",
+      "description": "Review and manage Supabase Postgres migrations safely."
+    },
+    {
+      "name": "postgres-best-practices",
+      "description": "Review Postgres schema and query patterns against Supabase best practices."
+    },
+    {
+      "name": "data-analysis",
+      "description": "Run analytical queries against PostgreSQL with explicit read-only guards."
+    },
+    {
+      "name": "safe-query",
+      "description": "Run SELECT queries against PostgreSQL with read-only guards and query plan analysis."
+    },
+    {
+      "name": "schema-inspection",
+      "description": "Inspect PostgreSQL schema: tables, columns, indexes, constraints, and relations."
+    }
+  ]
+}

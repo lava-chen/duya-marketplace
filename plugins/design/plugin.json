@@ -1,0 +1,96 @@
+{
+  "name": "design",
+  "version": "1.0.0",
+  "description": "End-to-end design workflows — critique, accessibility, handoff, design system management, user research, UX writing, and Figma integration.",
+  "author": {
+    "name": "DUYA Team",
+    "url": "https://github.com/lava-chen/duya"
+  },
+  "license": "MIT",
+  "keywords": [
+    "design",
+    "figma",
+    "critique",
+    "accessibility",
+    "ux",
+    "wcag",
+    "handoff",
+    "design-system",
+    "user-research",
+    "research",
+    "ux-writing",
+    "visual-comparison"
+  ],
+  "setup": [
+    {
+      "id": "figmaApiKey",
+      "label": "Figma personal access token (preferred: scoped to Dev Mode)",
+      "type": "secret",
+      "required": true
+    }
+  ],
+  "interface": {
+    "displayName": "Design",
+    "shortDescription": "End-to-end design workflows — critique, accessibility, handoff, design system, user research, and Figma integration.",
+    "longDescription": "End-to-end design and UX workflow plugin combining broad design critique, accessibility review, design system management, user research synthesis, and UX writing with deep Figma integration. Supersedes the former design-suite and figma-design plugins. Use the sub-skill appropriate to your task.",
+    "category": "development",
+    "icon": "./assets/icon.svg",
+    "brandColor": "#4F46E5",
+    "defaultPrompt": [
+      "Critique the onboarding flow screens",
+      "Audit this page for WCAG accessibility",
+      "Extract design tokens from the Figma file",
+      "Synthesize the latest user research notes"
+    ]
+  },
+  "skills": [
+    {
+      "name": "accessibility-review",
+      "description": "Run WCAG accessibility review on UI screens, prototypes, or HTML — flag contrast, keyboard nav, and ARIA issues."
+    },
+    {
+      "name": "design-critique",
+      "description": "Give structured, evidence-based critique of a screen, prototype, or user flow."
+    },
+    {
+      "name": "design-handoff",
+      "description": "Bridge design and engineering: extract specs, tokens, and interaction details for developer handoff."
+    },
+    {
+      "name": "design-system",
+      "description": "Manage and audit design system components, tokens, and documentation consistency."
+    },
+    {
+      "name": "research-synthesis",
+      "description": "Synthesize findings from multiple user research sources into actionable insights."
+    },
+    {
+      "name": "user-research",
+      "description": "Plan, conduct, and analyze user research sessions and surveys."
+    },
+    {
+      "name": "ux-copy",
+      "description": "Write UX microcopy: labels, error messages, empty states, and onboarding text."
+    },
+    {
+      "name": "component-implementation",
+      "description": "Implement UI components from Figma designs with code (HTML/CSS/React)."
+    },
+    {
+      "name": "design-context-extraction",
+      "description": "Pull layout, design tokens, and assets of a Figma frame into chat context."
+    },
+    {
+      "name": "design-system-mapping",
+      "description": "Map Figma design system components to code component libraries."
+    },
+    {
+      "name": "visual-comparison",
+      "description": "Visually compare a live implementation against a Figma design reference."
+    },
+    {
+      "name": "write-back-to-figma",
+      "description": "Write design annotations, comments, or metadata back into Figma files."
+    }
+  ]
+}

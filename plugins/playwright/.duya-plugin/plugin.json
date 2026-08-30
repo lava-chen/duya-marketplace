@@ -1,0 +1,24 @@
+{
+  "name": "playwright",
+  "version": "0.1.0",
+  "description": "Browser and web automation — navigate, extract, fill forms, verify frontends, run E2E tests.",
+  "author": {
+    "name": "DUYA Team",
+    "url": "https://github.com/lava-chen/duya"
+  },
+  "license": "MIT",
+  "keywords": [
+    "playwright",
+    "browser",
+    "automation",
+    "e2e",
+    "testing"
+  ],
+  "interface": {
+    "displayName": "Playwright",
+    "longDescription": "Suggest when the user needs browser automation: navigating pages, extracting structured data, filling forms, verifying frontends, or running end-to-end tests.",
+    "category": "automation",
+    "icon": "./assets/icon.svg",
+    "brandColor": "#2EAD33"
+  }
+}
