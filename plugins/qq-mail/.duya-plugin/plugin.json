@@ -22,7 +22,7 @@
     {
       "id": "email",
       "label": "QQ 邮箱地址 (例如 123456789@qq.com / user@foxmail.com / user@vip.qq.com)",
-      "type": "string",
+      "type": "text",
       "required": true,
       "secret": false
     },
@@ -36,7 +36,7 @@
     {
       "id": "imap_host",
       "label": "IMAP 服务器地址 (默认 imap.qq.com, Foxmail 同此)",
-      "type": "string",
+      "type": "text",
       "required": false,
       "secret": false,
       "default": "imap.qq.com"
@@ -44,15 +44,15 @@
     {
       "id": "imap_port",
       "label": "IMAP SSL 端口 (默认 993)",
-      "type": "number",
+      "type": "text",
       "required": false,
       "secret": false,
-      "default": 993
+      "default": "993"
     },
     {
       "id": "smtp_host",
       "label": "SMTP 服务器地址 (默认 smtp.qq.com)",
-      "type": "string",
+      "type": "text",
       "required": false,
       "secret": false,
       "default": "smtp.qq.com"
@@ -60,10 +60,10 @@
     {
       "id": "smtp_port",
       "label": "SMTP 端口 (SSL 465 或 STARTTLS 587, 默认 465)",
-      "type": "number",
+      "type": "text",
       "required": false,
       "secret": false,
-      "default": 465
+      "default": "465"
     }
   ],
   "interface": {

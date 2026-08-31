@@ -1,4 +1,5 @@
 {
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "apple",
   "version": "1.0.0",
   "description": "Apple ecosystem integration: Notes, Reminders, Find My, and iMessage — all in one macOS-only suite.",

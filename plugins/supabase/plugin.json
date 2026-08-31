@@ -1,4 +1,5 @@
 {
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "supabase",
   "version": "1.0.0",
   "description": "Supabase and PostgreSQL integration — Postgres migrations, Edge Functions, auth, RLS, data analysis, safe querying, and schema inspection.",

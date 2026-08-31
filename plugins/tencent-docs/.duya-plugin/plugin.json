@@ -22,7 +22,7 @@
     {
       "id": "client_id",
       "label": "Tencent Docs Open Platform ClientId (应用 ClientId, 从开放平台后台获取)",
-      "type": "string",
+      "type": "text",
       "required": true,
       "secret": false
     },
@@ -36,14 +36,14 @@
     {
       "id": "redirect_uri",
       "label": "OAuth2 redirect_uri (回调地址, 需与开放平台后台一致)",
-      "type": "string",
+      "type": "text",
       "required": true,
       "secret": false
     },
     {
       "id": "scope",
       "label": "授权范围 scope (空格分隔, 例如: doc:read doc:write drive:read drive:write)",
-      "type": "string",
+      "type": "text",
       "required": false,
       "secret": false
     }

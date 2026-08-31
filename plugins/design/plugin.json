@@ -1,4 +1,5 @@
 {
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "design",
   "version": "1.0.0",
   "description": "End-to-end design workflows — critique, accessibility, handoff, design system management, user research, UX writing, and Figma integration.",

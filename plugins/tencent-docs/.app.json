@@ -1,7 +1,193 @@
 {
   "apps": [
     {
-      "id": "tencent-docs"
+      "id": "tencent-docs",
+      "name": "Tencent Docs",
+      "category": "productivity",
+      "interface": {
+        "label": "Tencent Docs",
+        "monogram": "T",
+        "description": "腾讯文档官方 OpenAPI：文件管理、在线文档、表格、智能表、收集表"
+      },
+      "oauth": {
+        "authUrl": "https://docs.qq.com/oauth/v2/authorize",
+        "tokenUrl": "https://docs.qq.com/oauth/v2/token",
+        "redirectPath": "/callback/tencent-docs",
+        "defaultScopes": [],
+        "requiresClientSecret": true,
+        "supportsManualConfiguration": true,
+        "clientId": "",
+        "userinfoUrl": ""
+      },
+      "tools": [
+        {
+          "name": "tencent_docs_list_files",
+          "description": "List files in a Tencent Docs folder (cursor pagination). Returns file metadata: id, name, type, url, owner, modified time.",
+          "title": "List files",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "folder_id": { "type": "string", "description": "Optional parent folder id. Omit to list the root." },
+              "limit": { "type": "number", "description": "Max items to return (default 20)." },
+              "order_by": { "type": "string", "description": "Sort key, e.g. 'modified_time desc'." }
+            }
+          },
+          "inputSchemaSummary": "folder_id?: string; limit?: number; order_by?: string",
+          "riskTier": "read",
+          "invoke": {
+            "method": "GET",
+            "url": "https://docs.qq.com/openapi/drive/v2/files",
+            "query": {
+              "parent_id": "${args.folder_id}",
+              "limit": "${args.limit}",
+              "order_by": "${args.order_by}"
+            },
+            "response": { "ok": "code", "dataPath": "data" }
+          }
+        },
+        {
+          "name": "tencent_docs_search_files",
+          "description": "Full-text search over Tencent Docs files the user can access. Returns matching file metadata.",
+          "title": "Search files",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "keyword": { "type": "string", "description": "Search keyword (title / content)." },
+              "limit": { "type": "number", "description": "Max results (default 20)." }
+            },
+            "required": ["keyword"]
+          },
+          "inputSchemaSummary": "keyword: string; limit?: number",
+          "riskTier": "read",
+          "invoke": {
+            "method": "GET",
+            "url": "https://docs.qq.com/openapi/drive/v2/files/search",
+            "query": { "keyword": "${args.keyword}", "limit": "${args.limit}" },
+            "response": { "ok": "code", "dataPath": "data" }
+          }
+        },
+        {
+          "name": "tencent_docs_get_file",
+          "description": "Get metadata for one Tencent Docs file by id: name, type, url, owner, modified time.",
+          "title": "Get file metadata",
+          "inputSchema": {
+            "type": "object",
+            "properties": { "file_id": { "type": "string", "description": "Tencent Docs file id (from list/search results)." } },
+            "required": ["file_id"]
+          },
+          "inputSchemaSummary": "file_id: string",
+          "riskTier": "read",
+          "invoke": {
+            "method": "GET",
+            "url": "https://docs.qq.com/openapi/drive/v2/files/${args.file_id}",
+            "response": { "ok": "code", "dataPath": "data" }
+          }
+        },
+        {
+          "name": "tencent_docs_create_file",
+          "description": "Create a new Tencent Docs online file (doc/sheet/slide/mind/form) in a folder, with optional initial content.",
+          "title": "Create file",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string", "description": "File title." },
+              "type": { "type": "string", "description": "doc | sheet | slide | mind | form | smartsheet" },
+              "parent_id": { "type": "string", "description": "Optional parent folder id." },
+              "content": { "type": "string", "description": "Optional initial Markdown/CSV content." }
+            },
+            "required": ["name", "type"]
+          },
+          "inputSchemaSummary": "name: string; type: doc|sheet|slide|mind|form|smartsheet; parent_id?: string; content?: string",
+          "riskTier": "draft",
+          "invoke": {
+            "method": "POST",
+            "url": "https://docs.qq.com/openapi/drive/v2/files",
+            "body": { "name": "${args.name}", "type": "${args.type}", "parent_id": "${args.parent_id}", "content": "${args.content}" },
+            "response": { "ok": "code", "dataPath": "data" }
+          }
+        },
+        {
+          "name": "tencent_docs_doc_get",
+          "description": "Read the content of an online document (doc.qq.com online doc) by file id. Returns editable ranges / full text.",
+          "title": "Read doc content",
+          "inputSchema": {
+            "type": "object",
+            "properties": { "file_id": { "type": "string", "description": "Online document file id." } },
+            "required": ["file_id"]
+          },
+          "inputSchemaSummary": "file_id: string",
+          "riskTier": "read",
+          "invoke": {
+            "method": "GET",
+            "url": "https://docs.qq.com/openapi/doc/v3/${args.file_id}",
+            "response": { "ok": "code", "dataPath": "data" }
+          }
+        },
+        {
+          "name": "tencent_docs_sheet_read_range",
+          "description": "Read cell values from an online spreadsheet range.",
+          "title": "Read sheet range",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "file_id": { "type": "string", "description": "Spreadsheet file id." },
+              "sheet_id": { "type": "string", "description": "Sheet id within the spreadsheet." },
+              "range": { "type": "string", "description": "A1-style range, e.g. 'A1:C10'." }
+            },
+            "required": ["file_id", "sheet_id"]
+          },
+          "inputSchemaSummary": "file_id: string; sheet_id: string; range?: A1-style",
+          "riskTier": "read",
+          "invoke": {
+            "method": "GET",
+            "url": "https://docs.qq.com/openapi/sheet/v3/${args.file_id}/sheets/${args.sheet_id}",
+            "query": { "range": "${args.range}" },
+            "response": { "ok": "code", "dataPath": "data" }
+          }
+        },
+        {
+          "name": "tencent_docs_smartsheet_list_records",
+          "description": "List records from an online smart sheet (智能表格).",
+          "title": "List smartsheet records",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "file_id": { "type": "string", "description": "Smart sheet file id." },
+              "limit": { "type": "number", "description": "Max records (default 50)." }
+            },
+            "required": ["file_id"]
+          },
+          "inputSchemaSummary": "file_id: string; limit?: number",
+          "riskTier": "read",
+          "invoke": {
+            "method": "GET",
+            "url": "https://docs.qq.com/openapi/smartsheet/v2/${args.file_id}/records",
+            "query": { "limit": "${args.limit}" },
+            "response": { "ok": "code", "dataPath": "data" }
+          }
+        },
+        {
+          "name": "tencent_docs_form_list_responses",
+          "description": "List submitted responses of an online form (收集表).",
+          "title": "List form responses",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "file_id": { "type": "string", "description": "Online form file id." },
+              "limit": { "type": "number", "description": "Max responses (default 50)." }
+            },
+            "required": ["file_id"]
+          },
+          "inputSchemaSummary": "file_id: string; limit?: number",
+          "riskTier": "read",
+          "invoke": {
+            "method": "GET",
+            "url": "https://docs.qq.com/openapi/form/v2/${args.file_id}/responses",
+            "query": { "limit": "${args.limit}" },
+            "response": { "ok": "code", "dataPath": "data" }
+          }
+        }
+      ]
     }
   ]
 }
