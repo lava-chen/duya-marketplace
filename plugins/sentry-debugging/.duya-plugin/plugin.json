@@ -1,7 +1,7 @@
 {
   "name": "sentry-debugging",
   "version": "0.1.0",
-  "description": "Sentry issue investigation, stacktrace analysis, regression detection, and fix-and-verify loop.",
+  "description": "Sentry issue 调查、堆栈跟踪分析、回归检测、修复验证循环。",
   "author": {
     "name": "DUYA Team",
     "url": "https://github.com/lava-chen/duya"
@@ -29,8 +29,9 @@
     }
   ],
   "interface": {
-    "displayName": "Sentry Debugging",
-    "longDescription": "Suggest when the user is investigating Sentry errors: issue triage, stacktrace analysis, regression detection, or fix-and-verify loops.",
+    "displayName": "Sentry 调试",
+    "longDescription": "当用户调查 Sentry 错误时推荐使用：issue 分类、堆栈跟踪分析、回归检测、修复验证循环。",
+    "shortDescription": "Sentry issue 调查、堆栈跟踪分析和回归检测。",
     "category": "development",
     "icon": "./assets/icon.svg",
     "brandColor": "#7B1CFF",

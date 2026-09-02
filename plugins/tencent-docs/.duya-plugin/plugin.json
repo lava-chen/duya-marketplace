@@ -1,7 +1,7 @@
 {
   "name": "tencent-docs",
   "version": "0.1.0",
-  "description": "Tencent Docs (腾讯文档, doc.qq.com) connector via the official OpenAPI. Provides the 'tencent-docs' app connection for plugins that list, search, read, create, edit, and export online documents / spreadsheets / smartsheets / forms hosted on doc.qq.com.",
+  "description": "通过官方 OpenAPI 连接腾讯文档（doc.qq.com）。为列出、搜索、阅读、创建、编辑和导出在线文档/电子表格/智能表/收集表 hosted on doc.qq.com 的插件提供 tencent-docs 应用连接。",
   "author": {
     "name": "DUYA Team",
     "url": "https://github.com/lava-chen/duya"
@@ -49,9 +49,9 @@
     }
   ],
   "interface": {
-    "displayName": "Tencent Docs",
-    "shortDescription": "Tencent Docs (腾讯文档, doc.qq.com) connector via the official OpenAPI. Provides the 'tencent-docs' app connection for plugins that read, edit, or export online documents, spreadsheets, and slides hosted on doc.qq.com.",
-    "longDescription": "Tencent Docs (腾讯文档) connector via the official OpenAPI documented at https://docs.qq.com/open/document/app/. Operations are dispatched through the connector registered as 'tencent-docs' in the duya AppConnectorRegistry. All API calls go through the connector — this plugin ships the connector declaration and skill documentation only; you must provide your own Tencent Docs Open Platform credentials (ClientId + ClientSecret + redirect_uri) at install time and complete the OAuth2 authorization code grant once. The OpenAPI covers five product areas: 文件管理 / 在线表格 / 在线智能表 / 在线文档 / 在线收集表.",
+    "displayName": "腾讯文档",
+    "shortDescription": "通过官方 OpenAPI 连接腾讯文档（doc.qq.com），读写在线文档、电子表格和幻灯片。",
+    "longDescription": "通过腾讯文档官方 OpenAPI（https://docs.qq.com/open/document/app/）连接腾讯文档。为列出、搜索、阅读、创建、编辑和导出在线文档/电子表格/智能表/收集表 hosted on doc.qq.com 的插件提供 tencent-docs 应用连接。",
     "category": "productivity",
     "icon": "./assets/icon.svg",
     "brandColor": "#2E72FF",

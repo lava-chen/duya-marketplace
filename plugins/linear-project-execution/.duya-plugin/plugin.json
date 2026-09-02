@@ -1,7 +1,7 @@
 {
   "name": "linear-project-execution",
   "version": "0.1.0",
-  "description": "Linear issue triage, spec-to-issues, sprint planning, implementation status, and issue-to-code.",
+  "description": "Linear issue 分类、需求转 issue、Sprint 规划、执行状态跟踪和 issue 与代码关联。",
   "author": {
     "name": "DUYA Team",
     "url": "https://github.com/lava-chen/duya"
@@ -22,8 +22,9 @@
     }
   ],
   "interface": {
-    "displayName": "Linear Project Execution",
-    "longDescription": "Suggest when the user works with Linear: issue triage, spec-to-issues, sprint planning, implementation status, or issue-to-code.",
+    "displayName": "Linear 项目执行",
+    "longDescription": "当用户使用 Linear 时推荐使用：issue 分类、需求转 issue、Sprint 规划、执行状态跟踪、issue 与代码关联。",
+    "shortDescription": "Linear issue 分类、需求转 issue、Sprint 规划和执行状态跟踪。",
     "category": "development",
     "icon": "./assets/icon.svg",
     "brandColor": "#5E6AD2",

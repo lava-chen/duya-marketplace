@@ -1,7 +1,7 @@
 {
   "name": "wecom",
   "version": "0.1.0",
-  "description": "WeCom (WeChat Work) enterprise collaboration plugin: messaging, contacts, meetings, schedules, todos, docs, spreadsheets, smart sheets. All operations go through the external `wecom-cli` command-line program.",
+  "description": "企业微信（WeCom）企业协作插件：消息、联系人、会议、日程、待办、文档、电子表格。所有操作通过外部 wecom-cli 命令行程序执行。",
   "author": {
     "name": "TRAE",
     "url": "https://www.trae.ai/"
@@ -30,9 +30,9 @@
     }
   ],
   "interface": {
-    "displayName": "WeCom",
-    "shortDescription": "WeCom enterprise collaboration: messaging, contacts, meetings, schedules, todos, documents",
-    "longDescription": "WeCom plugin. All operations are executed through the external `wecom-cli` command-line program (`wecom-cli <category> <tool> '<json>'`). The plugin ships the skill documentation only; you must provide the `wecom-cli` binary and WeCom credentials (access token / bot id / secret) yourself, usually via environment variables, because duya does not bundle native binaries or authenticate against WeCom directly.",
+    "displayName": "企业微信",
+    "shortDescription": "企业微信消息、联系人、会议、日程、待办、文档和电子表格。",
+    "longDescription": "企业微信（WeCom）插件。所有操作通过外部 wecom-cli 命令行程序执行（wecom-cli <category> <tool> '<json>'）。插件仅提供技能文档；需自行提供 wecom-cli 二进制文件和 WeCom 凭据（access token / bot id / secret）。",
     "category": "communication",
     "brandColor": "#2BAD13",
     "icon": "./assets/icon.svg",

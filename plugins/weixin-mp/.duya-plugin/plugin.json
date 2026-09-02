@@ -1,7 +1,7 @@
 {
   "name": "weixin-mp",
   "version": "1.0.0",
-  "description": "Extract and download WeChat Official Account articles (mp.weixin.qq.com). Convert articles to Markdown with images, code blocks, and metadata. Handles anti-bot verification detection.",
+  "description": "提取并下载微信公众号文章（mp.weixin.qq.com）。将文章转换为含图片、代码块和元数据的 Markdown。处理反爬验证检测。",
   "author": {
     "name": "DUYA Team",
     "url": "https://github.com/lava-chen/duya"
@@ -13,9 +13,9 @@
     "media"
   ],
   "interface": {
-    "displayName": "weixin-mp",
-    "shortDescription": "Extract and download WeChat Official Account articles (mp.weixin.qq.com). Convert articles to Markdown with images, code",
-    "longDescription": "Extract and download WeChat Official Account articles (mp.weixin.qq.com). Convert articles to Markdown with images, code blocks, and metadata. Handles anti-bot verification detection.",
+    "displayName": "微信公众号文章提取",
+    "shortDescription": "提取并下载微信公众号文章，转换为含图片、代码块的 Markdown。",
+    "longDescription": "提取并下载微信公众号文章（mp.weixin.qq.com）。将文章转换为含图片、代码块和元数据的 Markdown。处理反爬验证检测。",
     "category": "media",
     "icon": "./assets/icon.svg",
     "brandColor": "#07C160"

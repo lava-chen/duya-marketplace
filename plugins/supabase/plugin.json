@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "supabase",
   "version": "1.0.0",
-  "description": "Supabase and PostgreSQL integration — Postgres migrations, Edge Functions, auth, RLS, data analysis, safe querying, and schema inspection.",
+  "description": "Supabase 和 PostgreSQL 集成——Postgres 迁移、Edge Functions、认证、RLS、数据分析、安全查询和 schema 检查。",
   "author": {
     "name": "DUYA Team",
     "url": "https://github.com/lava-chen/duya"
@@ -42,9 +42,9 @@
     }
   ],
   "interface": {
-    "displayName": "Supabase",
-    "shortDescription": "Supabase and PostgreSQL integration — migrations, Edge Functions, auth, data analysis, and schema inspection.",
-    "longDescription": "Supabase and PostgreSQL integration for development and read-only data workflows. Covers Postgres migrations, Edge Functions, auth and RLS audit, data analysis, safe querying, and schema inspection. Supersedes the former supabase-development and postgres-readonly plugins. Use the sub-skill appropriate to your task.",
+    "displayName": "Supabase 数据库",
+    "shortDescription": "Supabase 和 PostgreSQL 集成——迁移、Edge Functions、认证、数据分析和 schema 检查。",
+    "longDescription": "Supabase 和 PostgreSQL 集成，用于开发和只读数据工作流。涵盖 Postgres 迁移、Edge Functions、认证和 RLS 审计、数据分析、安全查询和 schema 检查。取代之前的 supabase-development 和 postgres-readonly 插件。根据任务选择相应的子 skill。",
     "category": "development",
     "icon": "./assets/icon.svg",
     "brandColor": "#3FCF8E",

@@ -1,7 +1,7 @@
 {
   "name": "voice-setup",
   "version": "0.1.0",
-  "description": "Configure DUYA voice input (whisper.cpp local STT or OpenAI-compatible cloud STT) through the `duya_cli` control plane. Use when the user tries to use the voice button and whisper is not ready, when voice input returns \"model not ready\" / \"environment not ready\", or when the user asks to set up / install / configure voice input or whisper (e.g. '配一下语音', '安装 whisper', '语音输入用不了'). Diagnoses the local whisper environment, downloads the configured model, writes the `[voice]` config, and verifies readiness.",
+  "description": "通过 duya_cli 控制平面配置 DUYA 语音输入（whisper.cpp 本地 STT 或 OpenAI 兼容云端 STT）。当用户尝试使用语音按钮但 whisper 未就绪、语音输入返回 model not ready / environment not ready、或用户要求设置/安装/配置语音输入或 whisper（如'配一下语音'、'安装 whisper'、'语音输入用不了'）时使用。",
   "author": {
     "name": "DUYA Team",
     "url": "https://github.com/lava-chen/duya"
@@ -13,9 +13,9 @@
     "voice-setup"
   ],
   "interface": {
-    "displayName": "voice-setup",
-    "shortDescription": "Configure DUYA voice input (whisper.cpp local STT or OpenAI-compatible cloud STT) through the `duya_cli` control plane. ",
-    "longDescription": "Whenever DUYA voice input needs first-use configuration or a whisper environment / STT engine is missing or misconfigured.",
+    "displayName": "Duya 语音配置",
+    "shortDescription": "配置 DUYA 语音输入（whisper.cpp 本地 STT 或云端 STT）。",
+    "longDescription": "当 DUYA 语音输入需要首次配置，或 whisper 环境 / STT 引擎缺失或配置错误时使用。通过 duya_cli 控制平面诊断本地 whisper 环境、下载配置的模型、写入 [voice] 配置并验证就绪状态。",
     "category": "productivity",
     "icon": "./assets/icon.svg",
     "brandColor": "#4F46E5"

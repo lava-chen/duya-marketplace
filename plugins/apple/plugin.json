@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "apple",
   "version": "1.0.0",
-  "description": "Apple ecosystem integration: Notes, Reminders, Find My, and iMessage — all in one macOS-only suite.",
+  "description": "Apple 生态集成：Notes、Reminders、Find My 和 iMessage——全部在一个 macOS 专属套件中。",
   "author": {
     "name": "DUYA Team",
     "url": "https://github.com/lava-chen/duya"
@@ -19,9 +19,9 @@
     "macos"
   ],
   "interface": {
-    "displayName": "Apple Suite",
-    "shortDescription": "Apple ecosystem integration for Notes, Reminders, Find My, and iMessage on macOS.",
-    "longDescription": "Apple ecosystem integration for Notes, Reminders, Find My, and iMessage on macOS. All four capabilities are bundled under one plugin, each accessible as a standalone skill. Requires macOS with the respective Apple apps signed into iCloud.",
+    "displayName": "Apple 套件",
+    "shortDescription": "Apple 生态集成：Notes、Reminders、Find My 和 iMessage（macOS）。",
+    "longDescription": "Apple 生态集成：Notes、Reminders、Find My 和 iMessage，全部在一个 macOS 专属套件中。四个功能捆绑在一个插件中，每个都可以作为独立 skill 使用。需要 macOS 并登录相应的 iCloud 应用。",
     "category": "productivity",
     "icon": "./assets/icon.svg",
     "brandColor": "#000000",

@@ -1,7 +1,7 @@
 {
   "name": "vercel",
   "version": "0.1.0",
-  "description": "Vercel deployment inspection, log diagnosis, preview validation, and production release with strict gate on promote.",
+  "description": "Vercel 部署检查、日志诊断、预览验证、生产发布（含严格的 promote 门控）。",
   "author": {
     "name": "DUYA Team",
     "url": "https://github.com/lava-chen/duya"
@@ -30,7 +30,8 @@
   ],
   "interface": {
     "displayName": "Vercel",
-    "longDescription": "Suggest when the user works with Vercel: inspecting deployments, diagnosing logs, validating previews, or releasing to production.",
+    "longDescription": "当用户使用 Vercel 时推荐使用：部署检查、日志诊断、预览验证、生产发布。",
+    "shortDescription": "Vercel 部署检查、日志诊断、预览验证和生产发布。",
     "category": "development",
     "icon": "./assets/icon.svg",
     "brandColor": "#111111",

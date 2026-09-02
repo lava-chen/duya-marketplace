@@ -1,7 +1,7 @@
 {
   "name": "playwright",
   "version": "0.1.0",
-  "description": "Browser and web automation — navigate, extract, fill forms, verify frontends, run E2E tests.",
+  "description": "浏览器与网页自动化——导航、提取数据、填写表单、验证前端、运行端到端测试。",
   "author": {
     "name": "DUYA Team",
     "url": "https://github.com/lava-chen/duya"
@@ -15,8 +15,9 @@
     "testing"
   ],
   "interface": {
-    "displayName": "Playwright",
-    "longDescription": "Suggest when the user needs browser automation: navigating pages, extracting structured data, filling forms, verifying frontends, or running end-to-end tests.",
+    "displayName": "Playwright 浏览器自动化",
+    "longDescription": "当用户需要浏览器自动化时推荐：导航页面、提取结构化数据、填写表单、验证前端、运行端到端测试。",
+    "shortDescription": "浏览器与网页自动化——导航、提取数据、填写表单、运行 E2E 测试。",
     "category": "automation",
     "icon": "./assets/icon.svg",
     "brandColor": "#2EAD33"

@@ -1,7 +1,7 @@
 {
   "name": "microsoft365",
   "version": "0.1.0",
-  "description": "Microsoft 365 connector via OAuth. Provides the 'microsoft365' app connection for plugins that work with Outlook, OneDrive, or Teams content.",
+  "description": "通过 OAuth 连接 Microsoft 365，提供 Outlook、OneDrive、Teams 的应用连接支持。",
   "author": {
     "name": "DUYA Team",
     "url": "https://github.com/lava-chen/duya"
@@ -17,8 +17,8 @@
   ],
   "interface": {
     "displayName": "Microsoft 365",
-    "shortDescription": "Microsoft 365 connector via OAuth. Provides the 'microsoft365' app connection for plugins that work with Outlook, OneDri",
-    "longDescription": "Microsoft 365 connector via OAuth. Provides the 'microsoft365' app connection for plugins that work with Outlook, OneDrive, or Teams content.",
+    "shortDescription": "通过 OAuth 连接 Microsoft 365，支持 Outlook、OneDrive、Teams 内容访问。",
+    "longDescription": "通过 OAuth 连接 Microsoft 365，提供 Outlook、OneDrive、Teams 的应用连接支持。",
     "category": "productivity",
     "icon": "./assets/icon.svg",
     "brandColor": "#00ADEF",

@@ -1,7 +1,7 @@
 {
   "name": "zotero",
   "version": "0.1.0",
-  "description": "Connect duya to a local Zotero Desktop library: search items, list collections/tags, export BibTeX, insert citation keys into LaTeX or Markdown drafts, read indexed full text, and import BibTeX/RIS records through the Zotero local API and connector server.",
+  "description": "连接 duya 到本地 Zotero Desktop 文献库：搜索条目、列出集合/标签、导出 BibTeX、在 LaTeX 或 Markdown 草稿中插入引用键、阅读索引的全文、通过 Zotero 本地 API 导入 BibTeX/RIS 记录。",
   "author": {
     "name": "OpenAI",
     "url": "https://openai.com/"
@@ -19,9 +19,9 @@
     "latex"
   ],
   "interface": {
-    "displayName": "Zotero",
-    "shortDescription": "Find papers and add citations from Zotero",
-    "longDescription": "Connect duya to your Zotero Desktop library so it can find saved papers, export BibTeX, add citation keys to drafts, read indexed attachment text when you ask, and import new reference records into Zotero with your approval. Requires the Zotero desktop app with its local API enabled (the bundled skill can enable it for you).",
+    "displayName": "Zotero 文献管理",
+    "shortDescription": "从 Zotero 搜索论文并添加引用。",
+    "longDescription": "连接 duya 到本地 Zotero Desktop 文献库。搜索已保存的论文、导出 BibTeX、在草稿中添加引用键、阅读索引的附件文本、导入新的参考记录到 Zotero。需要 Zotero 桌面应用并开启本地 API。",
     "category": "research",
     "brandColor": "#EF4444",
     "icon": "./assets/icon.png",

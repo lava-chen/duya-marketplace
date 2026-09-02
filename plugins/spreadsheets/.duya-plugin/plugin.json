@@ -1,7 +1,7 @@
 {
   "name": "spreadsheets",
   "version": "0.1.0",
-  "description": "Create, edit, analyze, visualize, render, and export spreadsheets (XLSX/CSV/TSV) by reusing duya's bundled xlsx office skill.",
+  "description": "创建、编辑、分析、可视化、渲染和导出电子表格（XLSX/CSV/TSV）。复用 duya 内置的 XLSX office skill。",
   "author": {
     "name": "Duya"
   },
@@ -21,9 +21,9 @@
     "workbook"
   ],
   "interface": {
-    "displayName": "Spreadsheets",
-    "shortDescription": "Create and edit spreadsheet files",
-    "longDescription": "Create, edit, inspect, render, verify, and export XLSX, CSV, and TSV spreadsheets locally. Reuses duya's bundled xlsx office skill. Use Spreadsheets when the durable output or target is a spreadsheet, workbook, sheet, Google Sheet, or CSV file.",
+    "displayName": "电子表格",
+    "shortDescription": "创建和编辑电子表格文件（XLSX/CSV）。",
+    "longDescription": "本地创建、编辑、检查、分析、可视化、渲染和导出 XLSX、CSV 和 TSV 电子表格。复用 duya 内置的 XLSX office skill。当持久化输出或目标是电子表格、工作表、Google Sheet 或 CSV 文件时使用。",
     "category": "productivity",
     "brandColor": "#107C41",
     "icon": "./assets/icon.svg",

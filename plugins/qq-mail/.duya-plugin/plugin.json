@@ -1,7 +1,7 @@
 {
   "name": "qq-mail",
   "version": "0.1.0",
-  "description": "QQ Mail (QQ 邮箱, mail.qq.com) connector via the official IMAP / SMTP / Exchange protocols. Provides the 'qq-mail' app connection for plugins that read, search, send, and organize messages across @qq.com / @foxmail.com / vip.qq.com mailboxes.",
+  "description": "通过官方 IMAP / SMTP / Exchange 协议连接 QQ 邮箱（mail.qq.com）。为读取、搜索、发送和组织 @qq.com / @foxmail.com / vip.qq.com 邮箱消息的插件提供 qq-mail 应用连接。",
   "author": {
     "name": "DUYA Team",
     "url": "https://github.com/lava-chen/duya"
@@ -67,9 +67,9 @@
     }
   ],
   "interface": {
-    "displayName": "QQ Mail",
-    "shortDescription": "QQ Mail (QQ 邮箱, mail.qq.com) connector via the official IMAP / SMTP / Exchange protocols. Provides the 'qq-mail' app connection for plugins that read, search, send, and organize messages across @qq.com / @foxmail.com / vip.qq.com mailboxes.",
-    "longDescription": "QQ Mail (QQ 邮箱) connector via the official IMAP / SMTP / Exchange endpoints published at https://service.mail.qq.com/. QQ Mail does NOT expose a public OpenAPI; the supported integration path is standard mail protocols authenticated by an authorization code (授权码) generated in mail.qq.com settings. Operations are dispatched through the connector registered as 'qq-mail' in the duya AppConnectorRegistry. The connector handles IMAP IDLE for push, SMTP submission for sending, and Exchange ActiveSync if enabled. Use this connector to list folders, search / read / send messages, manage contacts, and organize @qq.com / @foxmail.com / @vip.qq.com mailboxes.",
+    "displayName": "QQ 邮箱",
+    "shortDescription": "通过 IMAP / SMTP / Exchange 协议连接 QQ 邮箱（mail.qq.com）。",
+    "longDescription": "通过官方 IMAP / SMTP / Exchange 协议连接 QQ 邮箱（mail.qq.com）。为读取、搜索、发送和组织 @qq.com / @foxmail.com / vip.qq.com 邮箱消息的插件提供 qq-mail 应用连接。",
     "category": "productivity",
     "icon": "./assets/icon.svg",
     "brandColor": "#F5A623",

@@ -1,7 +1,7 @@
 {
   "name": "twitter",
   "version": "1.2.0",
-  "description": "Extract tweets, timelines, and search results from X (Twitter) using the browser tool. Uses DOM-based extraction as the primary method (more reliable than API), with API as fallback. Handles X's SPA navigation and tab disconnection.",
+  "description": "使用浏览器工具提取 X（Twitter）的推文、时间线和搜索结果。以 DOM 提取为主（比 API 更可靠），API 作为备选。处理 X 的 SPA 导航和标签页断连问题。",
   "author": {
     "name": "DUYA Team",
     "url": "https://github.com/lava-chen/duya"
@@ -13,9 +13,9 @@
     "media"
   ],
   "interface": {
-    "displayName": "twitter",
-    "shortDescription": "Extract tweets, timelines, and search results from X (Twitter) using the browser tool. Uses DOM-based extraction as the ",
-    "longDescription": "Extract tweets, timelines, and search results from X (Twitter) using the browser tool. Uses DOM-based extraction as the primary method (more reliable than API), with API as fallback. Handles X's SPA navigation and tab disconnection.",
+    "displayName": "Twitter/X 推文提取",
+    "shortDescription": "使用浏览器工具提取 X（Twitter）的推文、时间线和搜索结果。",
+    "longDescription": "使用浏览器工具提取 X（Twitter）的推文、时间线和搜索结果。以 DOM 提取为主（比 API 更可靠），API 作为备选。处理 X 的 SPA 导航和标签页断连问题。",
     "category": "media",
     "icon": "./assets/icon.svg",
     "brandColor": "#000000"

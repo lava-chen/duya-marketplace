@@ -1,7 +1,7 @@
 {
   "name": "literature",
   "version": "0.1.0",
-  "description": "Literature asset and evidence management for research workflows.",
+  "description": "研究工作流中的文献资源与证据管理。",
   "author": {
     "name": "DUYA Team",
     "url": "https://github.com/lava-chen/duya"
@@ -14,8 +14,9 @@
     "papers"
   ],
   "interface": {
-    "displayName": "Literature Plugin",
-    "longDescription": "Suggest when the user works with research literature: paper analysis, citation formatting, or literature review workflows.",
+    "displayName": "文献管理",
+    "longDescription": "当用户处理研究文献时推荐使用：论文分析、引用格式化、文献综述工作流。",
+    "shortDescription": "研究工作流中的文献资源与证据管理。",
     "category": "research",
     "icon": "./assets/icon.svg",
     "brandColor": "#4F46E5"

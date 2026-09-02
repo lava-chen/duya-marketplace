@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "design",
   "version": "1.0.0",
-  "description": "End-to-end design workflows — critique, accessibility, handoff, design system management, user research, UX writing, and Figma integration.",
+  "description": "端到端设计工作流——设计评审、无障碍检查、设计交接、设计系统管理、用户研究、UX 文案和 Figma 集成。",
   "author": {
     "name": "DUYA Team",
     "url": "https://github.com/lava-chen/duya"
@@ -31,9 +31,9 @@
     }
   ],
   "interface": {
-    "displayName": "Design",
-    "shortDescription": "End-to-end design workflows — critique, accessibility, handoff, design system, user research, and Figma integration.",
-    "longDescription": "End-to-end design and UX workflow plugin combining broad design critique, accessibility review, design system management, user research synthesis, and UX writing with deep Figma integration. Supersedes the former design-suite and figma-design plugins. Use the sub-skill appropriate to your task.",
+    "displayName": "设计工具",
+    "shortDescription": "端到端设计工作流——设计评审、无障碍检查、设计交接、设计系统和 Figma 集成。",
+    "longDescription": "端到端设计和 UX 工作流插件，涵盖全面的设计评审、无障碍检查、设计系统管理、用户研究合成、UX 文案和深度 Figma 集成。取代之前的设计套件和 figma-design 插件。根据任务选择相应的子 skill。",
     "category": "development",
     "icon": "./assets/icon.svg",
     "brandColor": "#4F46E5",

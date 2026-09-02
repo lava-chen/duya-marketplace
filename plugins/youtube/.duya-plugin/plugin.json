@@ -1,7 +1,7 @@
 {
   "name": "youtube",
   "version": "1.1.0",
-  "description": "Extract video info, transcripts, comments, and search videos from YouTube (youtube.com). Uses InnerTube Android API to bypass PoToken requirements and string-based XML parsing to avoid DOMParser issues.",
+  "description": "提取 YouTube（youtube.com）视频信息、字幕、评论和搜索视频。使用 InnerTube Android API 绕过 PoToken 要求，使用基于字符串的 XML 解析避免 DOMParser 问题。",
   "author": {
     "name": "DUYA Team",
     "url": "https://github.com/lava-chen/duya"
@@ -13,9 +13,9 @@
     "media"
   ],
   "interface": {
-    "displayName": "youtube",
-    "shortDescription": "Extract video info, transcripts, comments, and search videos from YouTube (youtube.com). Uses InnerTube Android API to b",
-    "longDescription": "Extract video info, transcripts, comments, and search videos from YouTube (youtube.com). Uses InnerTube Android API to bypass PoToken requirements and string-based XML parsing to avoid DOMParser issues.",
+    "displayName": "YouTube 视频提取",
+    "shortDescription": "提取 YouTube 视频信息、字幕、评论和搜索视频。",
+    "longDescription": "提取 YouTube（youtube.com）视频信息、字幕、评论和搜索视频。使用 InnerTube Android API 绕过 PoToken 要求，使用基于字符串的 XML 解析避免 DOMParser 问题。",
     "category": "media",
     "icon": "./assets/icon.svg",
     "brandColor": "#FF0000"

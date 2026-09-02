@@ -1,7 +1,7 @@
 {
   "name": "skill-creator",
   "version": "0.1.0",
-  "description": "\"Guide for creating effective DUYA skills. Use when the user wants to create a new skill or update an existing one that extends DUYA with specialized knowledge, workflows, or tool integrations.\"",
+  "description": "创建高效 DUYA Skill 的指南。当用户想创建新 Skill 或更新现有 Skill 以扩展 DUYA 的专业知识、工作流或工具集成时使用。",
   "author": {
     "name": "DUYA Team",
     "url": "https://github.com/lava-chen/duya"
@@ -13,9 +13,9 @@
     "development"
   ],
   "interface": {
-    "displayName": "skill-creator",
-    "shortDescription": "\"Guide for creating effective DUYA skills. Use when the user wants to create a new skill or update an existing one that ",
-    "longDescription": "\"Guide for creating effective DUYA skills. Use when the user wants to create a new skill or update an existing one that extends DUYA with specialized knowledge, workflows, or tool integrations.\"",
+    "displayName": "Skill 创建指南",
+    "shortDescription": "创建高效 DUYA Skill 的完整指南。",
+    "longDescription": "创建高效 DUYA Skill 的指南。当用户想创建新 Skill 或更新现有 Skill 以扩展 DUYA 的专业知识、工作流或工具集成时使用。",
     "category": "development",
     "icon": "./assets/icon.svg",
     "brandColor": "#4F46E5"

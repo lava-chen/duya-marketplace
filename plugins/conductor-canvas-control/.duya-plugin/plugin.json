@@ -1,7 +1,7 @@
 {
   "name": "conductor-canvas-control",
   "version": "0.1.0",
-  "description": "Detailed guide for controlling the conductor canvas (canvas philosophy, mode classification, zoning conventions, element kinds, coordinates, layout patterns, capture/verify timing)",
+  "description": "控制 Conductor 画布的详细指南：画布理念、模式分类、分区约定、元素种类、坐标系统、布局模式、捕获与验证时机。",
   "author": {
     "name": "DUYA Team",
     "url": "https://github.com/lava-chen/duya"
@@ -13,9 +13,9 @@
     "agentic"
   ],
   "interface": {
-    "displayName": "conductor-canvas-control",
-    "shortDescription": "Detailed guide for controlling the conductor canvas (canvas philosophy, mode classification, zoning conventions, element",
-    "longDescription": "Detailed guide for controlling the conductor canvas (canvas philosophy, mode classification, zoning conventions, element kinds, coordinates, layout patterns, capture/verify timing)",
+    "displayName": "Conductor 画布控制",
+    "shortDescription": "控制 Conductor 画布的详细指南：画布理念、模式分类、分区、元素和布局。",
+    "longDescription": "控制 Conductor 画布的详细指南：画布理念、模式分类、分区约定、元素种类、坐标系统、布局模式、捕获与验证时机。",
     "category": "development",
     "icon": "./assets/icon.svg",
     "brandColor": "#4F46E5"

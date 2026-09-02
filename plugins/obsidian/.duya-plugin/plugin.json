@@ -1,7 +1,7 @@
 {
   "name": "obsidian",
   "version": "0.1.0",
-  "description": "Connect duya to a local Obsidian vault through the official desktop `obsidian` CLI: search and read notes, create or update pages, manage links, tasks, properties, templates, and local history.",
+  "description": "通过官方 desktop obsidian CLI 连接 duya 到本地 Obsidian 保险库：搜索和阅读笔记、创建或更新页面、管理双向链接、任务、属性、模板，从本地笔记历史中恢复。",
   "author": {
     "name": "Greg Asher",
     "url": "https://github.com/greg-asher"
@@ -18,8 +18,8 @@
   ],
   "interface": {
     "displayName": "Obsidian",
-    "shortDescription": "Search and edit your local Obsidian vault",
-    "longDescription": "Connect duya to your local Obsidian vault through the official desktop `obsidian` CLI. Search and read notes, create or update pages, manage backlinks, tasks, properties, templates, and restore from local note history. Requires the Obsidian desktop app with the official CLI enabled; the bundled skill works against your local vault directly.",
+    "shortDescription": "搜索和编辑本地 Obsidian 保险库中的笔记。",
+    "longDescription": "通过官方 desktop obsidian CLI 连接 duya 到本地 Obsidian 保险库。搜索和阅读笔记、创建或更新页面、管理双向链接、任务、属性、模板，从本地笔记历史中恢复。需要 Obsidian 桌面应用并开启官方 CLI。",
     "category": "productivity",
     "brandColor": "#7C3AED",
     "icon": "./assets/icon.svg",

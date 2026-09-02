@@ -1,7 +1,7 @@
 {
   "name": "bilibili",
   "version": "1.1.0",
-  "description": "Extract video info, subtitles, comments, and search videos from Bilibili (bilibili.com). Uses WBI-signed API calls to bypass风控 restrictions and properly fetch subtitle data.",
+  "description": "提取 B站（bilibili.com）视频信息、字幕、评论和搜索视频。使用 WBI 签名 API 调用绕过风控限制，正确获取字幕数据。",
   "author": {
     "name": "DUYA Team",
     "url": "https://github.com/lava-chen/duya"
@@ -13,9 +13,9 @@
     "media"
   ],
   "interface": {
-    "displayName": "bilibili",
-    "shortDescription": "Extract video info, subtitles, comments, and search videos from Bilibili (bilibili.com). Uses WBI-signed API calls to by",
-    "longDescription": "Extract video info, subtitles, comments, and search videos from Bilibili (bilibili.com). Uses WBI-signed API calls to bypass风控 restrictions and properly fetch subtitle data.",
+    "displayName": "哔哩哔哩",
+    "shortDescription": "提取 B站视频信息、字幕、评论和搜索视频，使用 WBI 签名 API。",
+    "longDescription": "提取 B站（bilibili.com）视频信息、字幕、评论和搜索视频。使用 WBI 签名 API 调用绕过风控限制，正确获取字幕数据。",
     "category": "media",
     "icon": "./assets/icon.svg",
     "brandColor": "#00A1D6"

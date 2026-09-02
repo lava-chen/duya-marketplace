@@ -1,7 +1,7 @@
 {
   "name": "pdf",
   "version": "0.1.0",
-  "description": "Read, create, inspect, render, verify, and extract PDF files by reusing duya's bundled pdf office skill.",
+  "description": "读取、创建、检查、渲染、验证和提取 PDF 文件。复用 duya 内置的 PDF office skill。",
   "author": {
     "name": "Duya"
   },
@@ -19,9 +19,9 @@
     "extraction"
   ],
   "interface": {
-    "displayName": "PDF",
-    "shortDescription": "Read, create, and verify PDF files",
-    "longDescription": "Read, create, inspect, render, verify, and extract content from PDF files locally. Reuses duya's bundled pdf office skill. Use PDF when the durable output or target is a PDF file and visual layout fidelity matters.",
+    "displayName": "PDF 处理",
+    "shortDescription": "读取、创建和验证 PDF 文件。",
+    "longDescription": "本地读取、创建、检查、渲染、验证和提取 PDF 文件内容。复用 duya 内置的 PDF office skill。当持久化输出或目标是 PDF 文件且需要视觉布局保真度时使用。",
     "category": "productivity",
     "brandColor": "#DC2626",
     "icon": "./assets/icon.svg",

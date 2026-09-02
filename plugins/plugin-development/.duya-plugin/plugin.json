@@ -1,7 +1,7 @@
 {
   "name": "plugin-development",
   "version": "0.1.0",
-  "description": "\"Create DUYA plugins with valid `plugin.json` manifests matching the `duya.plugin.v1` schema. Use when the user wants to create a new plugin, add plugin capabilities (skills/hooks/MCP/CLI/UI), generate marketplace entries, or update an existing local plugin during development.\"",
+  "description": "创建符合 duya.plugin.v1 schema 的有效 plugin.json 清单的 DUYA 插件。当用户想创建新插件、添加插件能力（skills/hooks/MCP/CLI/UI）、生成 marketplace 条目，或在开发过程中更新现有本地插件时使用。",
   "author": {
     "name": "DUYA Team",
     "url": "https://github.com/lava-chen/duya"
@@ -13,9 +13,9 @@
     "development"
   ],
   "interface": {
-    "displayName": "plugin-development",
-    "shortDescription": "\"Create DUYA plugins with valid `plugin.json` manifests matching the `duya.plugin.v1` schema. Use when the user wants to",
-    "longDescription": "\"Create DUYA plugins with valid `plugin.json` manifests matching the `duya.plugin.v1` schema. Use when the user wants to create a new plugin, add plugin capabilities (skills/hooks/MCP/CLI/UI), generate marketplace entries, or update an existing local plugin during development.\"",
+    "displayName": "插件开发",
+    "shortDescription": "创建符合 duya.plugin.v1 schema 的 DUYA 插件和 marketplace 条目。",
+    "longDescription": "创建符合 duya.plugin.v1 schema 的有效 plugin.json 清单的 DUYA 插件。当用户想创建新插件、添加插件能力（skills/hooks/MCP/CLI/UI）、生成 marketplace 条目，或在开发过程中更新现有本地插件时使用。",
     "category": "development",
     "icon": "./assets/icon.svg",
     "brandColor": "#4F46E5"

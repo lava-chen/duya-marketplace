@@ -1,7 +1,7 @@
 {
   "name": "github-development",
   "version": "0.1.0",
-  "description": "GitHub repository, issue, PR, review, CI, and release workflows.",
+  "description": "GitHub 仓库、issue、PR、CI 和发布工作流。",
   "author": {
     "name": "DUYA Team",
     "url": "https://github.com/lava-chen/duya"
@@ -23,8 +23,9 @@
     }
   ],
   "interface": {
-    "displayName": "GitHub Development",
-    "longDescription": "Suggest when the user is working with a GitHub repository: exploring code, triaging issues, opening or reviewing PRs, debugging CI, or cutting a release.",
+    "displayName": "GitHub 开发",
+    "longDescription": "当用户操作 GitHub 仓库时推荐使用：探索代码、管理 issue、审查或创建 PR、调试 CI 或发布版本。",
+    "shortDescription": "GitHub 仓库、issue、PR、CI 和发布工作流。",
     "category": "development",
     "icon": "./assets/icon.svg",
     "brandColor": "#24292F",

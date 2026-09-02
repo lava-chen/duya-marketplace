@@ -1,7 +1,7 @@
 {
   "name": "presentations",
   "version": "0.1.0",
-  "description": "Create, edit, render, verify, and export presentation slide decks (.pptx) by reusing duya's bundled pptx office skill.",
+  "description": "创建、编辑、渲染、验证和导出演示文稿（.pptx）。复用 duya 内置的 PPTX office skill。",
   "author": {
     "name": "Duya"
   },
@@ -19,9 +19,9 @@
     "pptx"
   ],
   "interface": {
-    "displayName": "Presentations",
-    "shortDescription": "Create and edit presentations",
-    "longDescription": "Create, edit, inspect, render, verify, and export presentation slide decks locally, including PPTX authoring. Reuses duya's bundled pptx office skill. Use Presentations when the durable output or target is a deck, slidedeck, presentation deck, slide deck, slides, PowerPoint, presentation, or speaker notes.",
+    "displayName": "演示文稿",
+    "shortDescription": "创建和编辑演示文稿（PPT）。",
+    "longDescription": "本地创建、编辑、检查、渲染、验证和导出演示文稿（.pptx），包括 PPTX 创作。复用 duya 内置的 PPTX office skill。当持久化输出或目标是演示文稿、幻灯片、PowerPoint 文件或演讲稿时使用。",
     "category": "productivity",
     "brandColor": "#C43E1C",
     "icon": "./assets/icon.svg",

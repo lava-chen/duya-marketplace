@@ -1,7 +1,7 @@
 {
   "name": "notion",
   "version": "0.1.0",
-  "description": "Notion workspace search, research documentation, meeting knowledge capture, database maintenance, and spec-to-task.",
+  "description": "Notion 工作区搜索、研究文档、会议知识捕获、数据库维护、需求转任务。",
   "author": {
     "name": "DUYA Team",
     "url": "https://github.com/lava-chen/duya"
@@ -24,7 +24,8 @@
   ],
   "interface": {
     "displayName": "Notion",
-    "longDescription": "Suggest when the user works with Notion: workspace search, research documentation, meeting knowledge capture, database maintenance, or spec-to-task.",
+    "longDescription": "当用户使用 Notion 时推荐：工作区搜索、研究文档、会议知识捕获、数据库维护、需求转任务。",
+    "shortDescription": "Notion 工作区搜索、研究文档、会议笔记和需求转任务。",
     "category": "productivity",
     "icon": "./assets/icon.svg",
     "brandColor": "#111111",

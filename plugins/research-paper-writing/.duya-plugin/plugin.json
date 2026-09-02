@@ -1,7 +1,7 @@
 {
   "name": "research-paper-writing",
   "version": "1.1.0",
-  "description": "End-to-end pipeline for writing ML/AI research papers — from experiment design through analysis, drafting, revision, and submission. Covers NeurIPS, ICML, ICLR, ACL, AAAI, COLM. Integrates automated experiment monitoring, statistical analysis, iterative writing, and citation verification.",
+  "description": "ML/AI 科研论文全流程 pipeline——从实验设计到分析、撰写、修订和投稿。覆盖 NeurIPS、ICML、ICLR、ACL、AAAI、COLM。集成自动化实验监控、统计分析、迭代写作和引用验证。",
   "author": {
     "name": "DUYA Team",
     "url": "https://github.com/lava-chen/duya"
@@ -13,9 +13,9 @@
     "research"
   ],
   "interface": {
-    "displayName": "research-paper-writing",
-    "shortDescription": "End-to-end pipeline for writing ML/AI research papers — from experiment design through analysis, drafting, revision, and",
-    "longDescription": "End-to-end pipeline for writing ML/AI research papers — from experiment design through analysis, drafting, revision, and submission. Covers NeurIPS, ICML, ICLR, ACL, AAAI, COLM. Integrates automated experiment monitoring, statistical analysis, iterative writing, and citation verification.",
+    "displayName": "科研论文写作",
+    "shortDescription": "ML/AI 科研论文全流程——从实验设计到分析、撰写、修订和投稿。",
+    "longDescription": "ML/AI 科研论文全流程 pipeline——从实验设计到分析、撰写、修订和投稿。覆盖 NeurIPS、ICML、ICLR、ACL、AAAI、COLM。集成自动化实验监控、统计分析、迭代写作和引用验证。",
     "category": "research",
     "icon": "./assets/icon.svg",
     "brandColor": "#4F46E5"
