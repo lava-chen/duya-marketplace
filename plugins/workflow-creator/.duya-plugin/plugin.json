@@ -1,0 +1,26 @@
+{
+  "name": "workflow-creator",
+  "version": "0.1.0",
+  "description": "把重复出现的工作流封装成 DUYA 插件或 Skill 的完整指南。当用户想创建新插件、新 Skill，或把现有工作流沉淀为可复用资产时使用。",
+  "author": {
+    "name": "DUYA Team",
+    "url": "https://github.com/lava-chen/duya"
+  },
+  "license": "MIT",
+  "keywords": [
+    "workflow-creator",
+    "plugin-development",
+    "skill",
+    "development"
+  ],
+  "interface": {
+    "displayName": "工作流封装",
+    "shortDescription": "把重复工作流封装成 DUYA 插件或 Skill 的指南。",
+    "longDescription": "把重复出现的工作流封装成 DUYA 插件或 Skill 的完整指南。当用户想创建新插件、新 Skill，或把现有工作流沉淀为可复用资产时使用。",
+    "category": "development",
+    "icon": "./assets/icon.svg",
+    "brandColor": "#4F46E5",
+    "displayName_zh": "工作流封装",
+    "shortDescription_zh": "把重复工作流封装成 DUYA 插件或 Skill 的指南。"
+  }
+}

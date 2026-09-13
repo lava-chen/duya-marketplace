@@ -5,18 +5,6 @@
   },
   "plugins": [
     {
-      "name": "agent-create",
-      "source": {
-        "source": "local",
-        "path": "./plugins/agent-create"
-      },
-      "policy": {
-        "installation": "available",
-        "authentication": "on_use"
-      },
-      "category": "development"
-    },
-    {
       "name": "apple",
       "source": {
         "source": "local",
@@ -53,10 +41,10 @@
       "category": "media"
     },
     {
-      "name": "conductor-canvas-control",
+      "name": "canvas",
       "source": {
         "source": "local",
-        "path": "./plugins/conductor-canvas-control"
+        "path": "./plugins/canvas"
       },
       "policy": {
         "installation": "available",
@@ -173,18 +161,6 @@
       "category": "productivity"
     },
     {
-      "name": "plugin-development",
-      "source": {
-        "source": "local",
-        "path": "./plugins/plugin-development"
-      },
-      "policy": {
-        "installation": "available",
-        "authentication": "on_use"
-      },
-      "category": "development"
-    },
-    {
       "name": "playwright",
       "source": {
         "source": "local",
@@ -219,42 +195,6 @@
         "authentication": "on_install"
       },
       "category": "productivity"
-    },
-    {
-      "name": "research-paper-writing",
-      "source": {
-        "source": "local",
-        "path": "./plugins/research-paper-writing"
-      },
-      "policy": {
-        "installation": "available",
-        "authentication": "on_use"
-      },
-      "category": "research"
-    },
-    {
-      "name": "sentry-debugging",
-      "source": {
-        "source": "local",
-        "path": "./plugins/sentry-debugging"
-      },
-      "policy": {
-        "installation": "available",
-        "authentication": "on_install"
-      },
-      "category": "development"
-    },
-    {
-      "name": "skill-creator",
-      "source": {
-        "source": "local",
-        "path": "./plugins/skill-creator"
-      },
-      "policy": {
-        "installation": "available",
-        "authentication": "on_use"
-      },
-      "category": "development"
     },
     {
       "name": "slack",
@@ -329,18 +269,6 @@
       "category": "development"
     },
     {
-      "name": "voice-setup",
-      "source": {
-        "source": "local",
-        "path": "./plugins/voice-setup"
-      },
-      "policy": {
-        "installation": "available",
-        "authentication": "on_use"
-      },
-      "category": "productivity"
-    },
-    {
       "name": "wecom",
       "source": {
         "source": "local",
@@ -363,6 +291,18 @@
         "authentication": "on_use"
       },
       "category": "media"
+    },
+    {
+      "name": "workflow-creator",
+      "source": {
+        "source": "local",
+        "path": "./plugins/workflow-creator"
+      },
+      "policy": {
+        "installation": "available",
+        "authentication": "on_use"
+      },
+      "category": "development"
     },
     {
       "name": "youtube",
