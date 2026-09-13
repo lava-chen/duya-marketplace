@@ -18,6 +18,8 @@
     "longDescription": "提取 B站（bilibili.com）视频信息、字幕、评论和搜索视频。使用 WBI 签名 API 调用绕过风控限制，正确获取字幕数据。",
     "category": "media",
     "icon": "./assets/icon.svg",
-    "brandColor": "#00A1D6"
+    "brandColor": "#00A1D6",
+    "displayName_zh": "哔哩哔哩",
+    "shortDescription_zh": "提取 B站视频信息、字幕、评论和搜索视频，使用 WBI 签名 API。"
   }
 }

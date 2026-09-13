@@ -18,6 +18,8 @@
     "longDescription": "当 DUYA 语音输入需要首次配置，或 whisper 环境 / STT 引擎缺失或配置错误时使用。通过 duya_cli 控制平面诊断本地 whisper 环境、下载配置的模型、写入 [voice] 配置并验证就绪状态。",
     "category": "productivity",
     "icon": "./assets/icon.svg",
-    "brandColor": "#4F46E5"
+    "brandColor": "#4F46E5",
+    "displayName_zh": "Duya 语音配置",
+    "shortDescription_zh": "配置 DUYA 语音输入（whisper.cpp 本地 STT 或云端 STT）。"
   }
 }

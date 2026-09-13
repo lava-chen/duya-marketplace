@@ -33,6 +33,8 @@
       "Search my Notion for the onboarding doc",
       "Turn this conversation into meeting notes",
       "Find spec pages that are missing owners"
-    ]
+    ],
+    "displayName_zh": "Notion",
+    "shortDescription_zh": "Notion 工作区搜索、研究文档、会议笔记和需求转任务。"
   }
 }

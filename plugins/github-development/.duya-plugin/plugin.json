@@ -33,6 +33,8 @@
       "Summarize open PRs awaiting my review",
       "Investigate the failing CI run on main",
       "Draft release notes for the last tag"
-    ]
+    ],
+    "displayName_zh": "GitHub 开发",
+    "shortDescription_zh": "GitHub 仓库、issue、PR、CI 和发布工作流。"
   }
 }

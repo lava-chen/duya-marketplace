@@ -24,6 +24,8 @@
       "Summarize unread messages in #dev",
       "Post this update to the team channel",
       "Find the thread about the outage"
-    ]
+    ],
+    "displayName_zh": "Slack",
+    "shortDescription_zh": "通过 OAuth 连接 Slack 工作区，发布或读取频道消息。"
   }
 }

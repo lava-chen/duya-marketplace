@@ -18,6 +18,8 @@
     "longDescription": "提取并下载微信公众号文章（mp.weixin.qq.com）。将文章转换为含图片、代码块和元数据的 Markdown。处理反爬验证检测。",
     "category": "media",
     "icon": "./assets/icon.svg",
-    "brandColor": "#07C160"
+    "brandColor": "#07C160",
+    "displayName_zh": "微信公众号文章提取",
+    "shortDescription_zh": "提取并下载微信公众号文章，转换为含图片、代码块的 Markdown。"
   }
 }

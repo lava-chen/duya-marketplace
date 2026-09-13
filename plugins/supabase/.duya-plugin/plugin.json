@@ -53,7 +53,9 @@
       "Audit RLS policies on public tables",
       "Run a safe SELECT query on the users table",
       "Analyze data distribution in the events table"
-    ]
+    ],
+    "displayName_zh": "Supabase 数据库",
+    "shortDescription_zh": "Supabase 和 PostgreSQL 集成——迁移、Edge Functions、认证、数据分析和 schema 检查。"
   },
   "skills": [
     {

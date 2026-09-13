@@ -39,6 +39,8 @@
       "Investigate the latest Sentry error",
       "Trace this stacktrace back to code",
       "Find regressions since the last release"
-    ]
+    ],
+    "displayName_zh": "Sentry 调试",
+    "shortDescription_zh": "Sentry issue 调查、堆栈跟踪分析和回归检测。"
   }
 }

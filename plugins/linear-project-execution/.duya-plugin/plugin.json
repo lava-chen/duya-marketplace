@@ -32,6 +32,8 @@
       "Triage my open Linear issues",
       "Turn this spec into implementable issues",
       "Show sprint progress and risks"
-    ]
+    ],
+    "displayName_zh": "Linear 项目执行",
+    "shortDescription_zh": "Linear issue 分类、需求转 issue、Sprint 规划和执行状态跟踪。"
   }
 }

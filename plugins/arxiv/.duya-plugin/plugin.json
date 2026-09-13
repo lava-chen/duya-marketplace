@@ -18,6 +18,8 @@
     "longDescription": "通过 arXiv 免费 REST API 搜索和获取学术论文。无需 API Key，支持按关键词、作者、分类或 ID 搜索。可结合 web_extract 或 ocr-and-documents skill 阅读完整论文内容。",
     "category": "research",
     "icon": "./assets/icon.svg",
-    "brandColor": "#B31B1B"
+    "brandColor": "#B31B1B",
+    "displayName_zh": "arXiv 学术论文",
+    "shortDescription_zh": "通过 arXiv 免费 API 搜索和获取学术论文，无需 API Key。"
   }
 }

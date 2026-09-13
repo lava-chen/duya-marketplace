@@ -30,7 +30,9 @@
       "Add a reminder for tomorrow",
       "Where is my AirTag?",
       "Text mom via iMessage"
-    ]
+    ],
+    "displayName_zh": "Apple 套件",
+    "shortDescription_zh": "Apple 生态集成：Notes、Reminders、Find My 和 iMessage（macOS）。"
   },
   "skills": [
     {

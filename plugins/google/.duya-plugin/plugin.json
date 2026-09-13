@@ -25,6 +25,8 @@
       "Find my latest Drive documents",
       "Summarize today's calendar events",
       "Search mail for unread invoices"
-    ]
+    ],
+    "displayName_zh": "Google 工作区",
+    "shortDescription_zh": "通过 OAuth 连接 Google Drive、Calendar 和 Gmail。"
   }
 }

@@ -42,7 +42,9 @@
       "Audit this page for WCAG accessibility",
       "Extract design tokens from the Figma file",
       "Synthesize the latest user research notes"
-    ]
+    ],
+    "displayName_zh": "设计工具",
+    "shortDescription_zh": "端到端设计工作流——设计评审、无障碍检查、设计交接、设计系统和 Figma 集成。"
   },
   "skills": [
     {

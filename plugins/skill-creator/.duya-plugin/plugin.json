@@ -18,6 +18,8 @@
     "longDescription": "创建高效 DUYA Skill 的指南。当用户想创建新 Skill 或更新现有 Skill 以扩展 DUYA 的专业知识、工作流或工具集成时使用。",
     "category": "development",
     "icon": "./assets/icon.svg",
-    "brandColor": "#4F46E5"
+    "brandColor": "#4F46E5",
+    "displayName_zh": "Skill 创建指南",
+    "shortDescription_zh": "创建高效 DUYA Skill 的完整指南。"
   }
 }

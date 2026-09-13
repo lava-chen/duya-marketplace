@@ -78,6 +78,8 @@
       "Summarize today's inbox",
       "Send this as an email to alice@qq.com",
       "Move all newsletters to the Promo folder"
-    ]
+    ],
+    "displayName_zh": "QQ 邮箱",
+    "shortDescription_zh": "通过 IMAP / SMTP / Exchange 协议连接 QQ 邮箱（mail.qq.com）。"
   }
 }

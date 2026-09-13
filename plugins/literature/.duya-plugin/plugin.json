@@ -19,6 +19,8 @@
     "shortDescription": "研究工作流中的文献资源与证据管理。",
     "category": "research",
     "icon": "./assets/icon.svg",
-    "brandColor": "#4F46E5"
+    "brandColor": "#4F46E5",
+    "displayName_zh": "文献管理",
+    "shortDescription_zh": "研究工作流中的文献资源与证据管理。"
   }
 }

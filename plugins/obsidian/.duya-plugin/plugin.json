@@ -23,6 +23,8 @@
     "category": "productivity",
     "brandColor": "#7C3AED",
     "icon": "./assets/icon.svg",
-    "screenshots": []
+    "screenshots": [],
+    "displayName_zh": "Obsidian",
+    "shortDescription_zh": "搜索和编辑本地 Obsidian 保险库中的笔记。"
   }
 }

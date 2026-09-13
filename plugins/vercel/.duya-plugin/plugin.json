@@ -39,6 +39,8 @@
       "Diagnose the last failed deployment",
       "Validate the newest preview URL",
       "Summarize production changes this week"
-    ]
+    ],
+    "displayName_zh": "Vercel",
+    "shortDescription_zh": "Vercel 部署检查、日志诊断、预览验证和生产发布。"
   }
 }

@@ -18,6 +18,8 @@
     "longDescription": "提取 YouTube（youtube.com）视频信息、字幕、评论和搜索视频。使用 InnerTube Android API 绕过 PoToken 要求，使用基于字符串的 XML 解析避免 DOMParser 问题。",
     "category": "media",
     "icon": "./assets/icon.svg",
-    "brandColor": "#FF0000"
+    "brandColor": "#FF0000",
+    "displayName_zh": "YouTube 视频提取",
+    "shortDescription_zh": "提取 YouTube 视频信息、字幕、评论和搜索视频。"
   }
 }

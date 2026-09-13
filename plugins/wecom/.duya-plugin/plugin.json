@@ -36,6 +36,8 @@
     "category": "communication",
     "brandColor": "#2BAD13",
     "icon": "./assets/icon.svg",
-    "screenshots": []
+    "screenshots": [],
+    "displayName_zh": "企业微信",
+    "shortDescription_zh": "企业微信消息、联系人、会议、日程、待办、文档和电子表格。"
   }
 }

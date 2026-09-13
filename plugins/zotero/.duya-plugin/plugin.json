@@ -25,6 +25,8 @@
     "category": "research",
     "brandColor": "#EF4444",
     "icon": "./assets/icon.png",
-    "screenshots": []
+    "screenshots": [],
+    "displayName_zh": "Zotero 文献管理",
+    "shortDescription_zh": "从 Zotero 搜索论文并添加引用。"
   }
 }

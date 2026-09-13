@@ -18,6 +18,8 @@
     "longDescription": "控制 Conductor 画布的详细指南：画布理念、模式分类、分区约定、元素种类、坐标系统、布局模式、捕获与验证时机。",
     "category": "development",
     "icon": "./assets/icon.svg",
-    "brandColor": "#4F46E5"
+    "brandColor": "#4F46E5",
+    "displayName_zh": "Conductor 画布控制",
+    "shortDescription_zh": "控制 Conductor 画布的详细指南：画布理念、模式分类、分区、元素和布局。"
   }
 }

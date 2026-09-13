@@ -26,6 +26,8 @@
       "Summarize my unread Outlook mail",
       "Find files I shared this week",
       "List today's meetings and attendees"
-    ]
+    ],
+    "displayName_zh": "Microsoft 365",
+    "shortDescription_zh": "通过 OAuth 连接 Microsoft 365，支持 Outlook、OneDrive、Teams 内容访问。"
   }
 }

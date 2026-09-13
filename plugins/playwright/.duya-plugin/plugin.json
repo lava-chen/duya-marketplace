@@ -20,6 +20,8 @@
     "shortDescription": "浏览器与网页自动化——导航、提取数据、填写表单、运行 E2E 测试。",
     "category": "automation",
     "icon": "./assets/icon.svg",
-    "brandColor": "#2EAD33"
+    "brandColor": "#2EAD33",
+    "displayName_zh": "Playwright 浏览器自动化",
+    "shortDescription_zh": "浏览器与网页自动化——导航、提取数据、填写表单、运行 E2E 测试。"
   }
 }

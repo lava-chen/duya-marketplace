@@ -25,6 +25,8 @@
     "category": "productivity",
     "brandColor": "#DC2626",
     "icon": "./assets/icon.svg",
-    "screenshots": []
+    "screenshots": [],
+    "displayName_zh": "PDF 处理",
+    "shortDescription_zh": "读取、创建和验证 PDF 文件。"
   }
 }

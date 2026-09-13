@@ -25,6 +25,8 @@
     "category": "productivity",
     "brandColor": "#C43E1C",
     "icon": "./assets/icon.svg",
-    "screenshots": []
+    "screenshots": [],
+    "displayName_zh": "演示文稿",
+    "shortDescription_zh": "创建和编辑演示文稿（PPT）。"
   }
 }

@@ -27,6 +27,8 @@
     "category": "productivity",
     "brandColor": "#107C41",
     "icon": "./assets/icon.svg",
-    "screenshots": []
+    "screenshots": [],
+    "displayName_zh": "电子表格",
+    "shortDescription_zh": "创建和编辑电子表格文件（XLSX/CSV）。"
   }
 }

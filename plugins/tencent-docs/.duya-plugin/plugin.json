@@ -60,6 +60,8 @@
       "Search for the Q3 planning spreadsheet",
       "Create a new doc from this Markdown draft",
       "Export this sheet to xlsx"
-    ]
+    ],
+    "displayName_zh": "腾讯文档",
+    "shortDescription_zh": "通过官方 OpenAPI 连接腾讯文档（doc.qq.com），读写在线文档、电子表格和幻灯片。"
   }
 }
