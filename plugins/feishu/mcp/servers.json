@@ -1,0 +1,25 @@
+{
+  "servers": [
+    {
+      "name": "feishu",
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "FEISHU_APP_ID",
+        "-e",
+        "FEISHU_APP_SECRET",
+        "ghcr.io/larksuite/lark-mcp:latest"
+      ],
+      "env": {
+        "FEISHU_APP_ID": "${setup.feishuAppId}",
+        "FEISHU_APP_SECRET": "${setup.feishuAppSecret}"
+      },
+      "envPassthrough": "allowlist",
+      "_status": "scaffold-stdio-docker",
+      "_authentication": "Runs the official lark-mcp image via Docker (ghcr.io/larksuite/lark-mcp). The two `-e` flags forward the App ID / App Secret from the process env (injected from setup.feishuAppId / setup.feishuAppSecret). The image and tag are placeholders matching the public larksuite/lark-mcp project — verify the exact distribution and tag before enabling this server. If a stdio binary distribution is preferred, swap command/args accordingly."
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "defaultMode": "read",
+  "writeActionsRequireApproval": true,
+  "destructiveActionsRequireApproval": true,
+  "permissions": [
+    { "name": "workspace.read" },
+    { "name": "workspace.write" }
+  ],
+  "tiers": {
+    "read": [
+      "im.message.list",
+      "im.message.get",
+      "im.chat.list",
+      "im.chat.get",
+      "docs.document.get",
+      "docs.document.list",
+      "sheets.spreadsheet.get",
+      "sheets.spreadsheet.list",
+      "sheets.sheet.list",
+      "task.task.list",
+      "task.task.get",
+      "calendar.event.list",
+      "calendar.event.get",
+      "drive.file.list",
+      "drive.file.get",
+      "contact.user.get"
+    ],
+    "draft": [
+      "im.message.create_draft"
+    ],
+    "write": [
+      "im.message.send",
+      "im.message.reply",
+      "docs.document.create",
+      "sheets.spreadsheet.create",
+      "task.task.create",
+      "task.task.update",
+      "calendar.event.create",
+      "contact.user.search"
+    ],
+    "modify": [
+      "docs.document.update",
+      "sheets.spreadsheet.update",
+      "task.task.assign",
+      "calendar.event.update",
+      "drive.file.move"
+    ],
+    "destructive": [
+      "im.message.delete",
+      "docs.document.delete",
+      "sheets.spreadsheet.delete",
+      "task.task.delete",
+      "calendar.event.delete",
+      "drive.file.delete"
+    ]
+  },
+  "notes": [
+    "Read-only actions (list chats, read docs, view tasks) run automatically.",
+    "Sending messages and creating docs require confirmation (write tier).",
+    "Deleting messages / docs / tasks / events requires strong explicit confirmation (destructive tier).",
+    "Action names mirror the public lark-mcp surface; rename or extend as the actual MCP toolset evolves.",
+    "Unlisted actions are bumped one tier above the conservative default per the design doc §6."
+  ]
+}

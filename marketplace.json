@@ -65,6 +65,18 @@
       "category": "development"
     },
     {
+      "name": "feishu",
+      "source": {
+        "source": "local",
+        "path": "./plugins/feishu"
+      },
+      "policy": {
+        "installation": "available",
+        "authentication": "on_install"
+      },
+      "category": "productivity"
+    },
+    {
       "name": "github-development",
       "source": {
         "source": "local",

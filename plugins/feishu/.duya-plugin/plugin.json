@@ -1,0 +1,48 @@
+{
+  "name": "feishu",
+  "version": "0.1.0",
+  "description": "飞书（Lark）消息、文档、表格、任务、日历与云空间协作。",
+  "author": {
+    "name": "DUYA Team",
+    "url": "https://github.com/lava-chen/duya"
+  },
+  "license": "MIT",
+  "keywords": [
+    "feishu",
+    "lark",
+    "im",
+    "docs",
+    "sheets",
+    "task",
+    "calendar"
+  ],
+  "setup": [
+    {
+      "id": "feishuAppId",
+      "label": "飞书开放平台 App ID",
+      "type": "secret",
+      "required": true
+    },
+    {
+      "id": "feishuAppSecret",
+      "label": "飞书开放平台 App Secret",
+      "type": "secret",
+      "required": true
+    }
+  ],
+  "interface": {
+    "displayName": "飞书",
+    "longDescription": "当用户在飞书里聊天、读文档、看板、跟进任务时推荐使用。覆盖消息、文档、表格、任务等高频协作动作；写操作需要二次确认，删除类操作需要强确认。",
+    "shortDescription": "飞书消息、文档、表格与任务协作。",
+    "category": "productivity",
+    "icon": "./assets/icon.svg",
+    "brandColor": "#00D6B9",
+    "defaultPrompt": [
+      "Summarize unread messages from today",
+      "Draft a standup note from this week's threads",
+      "Open the latest design doc and check the comments"
+    ],
+    "displayName_zh": "飞书",
+    "shortDescription_zh": "飞书消息、文档、表格与任务协作。"
+  }
+}
