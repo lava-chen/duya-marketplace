@@ -3,7 +3,7 @@
 
 - Copies builtin plugins from packages/plugin-core/src/plugins/builtin/
   (skipping github/notion — superseded by the richer plan-313 packs
-  github-development / notion-knowledge, which receive their app declarations)
+  github / notion-knowledge, which receive their app declarations)
 - Wraps every bundled skill (packages/agent/skills) as an installable plugin,
   flat under plugins/<skill-name>/
 - Adds connector plugins for app providers without a dedicated plugin
@@ -21,7 +21,7 @@ MKT = Path("E:/Projects/duya-marketplace/duya-marketplace")
 PLUGINS = MKT / "plugins"
 
 # Builtin plugins mirrored into the marketplace. github/notion are excluded:
-# the plan-313 packs github-development / notion-knowledge supersede them and
+# the plan-313 packs github / notion-knowledge supersede them and
 # carry their app connections via .app.json.
 BUILTINS = ["documents", "obsidian", "pdf",
             "presentations", "spreadsheets", "wecom", "zotero"]
@@ -60,7 +60,7 @@ SKILL_CATEGORY_TO_PLUGIN_CATEGORY = {
 AUTH_ON_INSTALL = {
     "figma-design", "linear-project-execution", "notion-knowledge",
     "sentry-debugging", "supabase-development", "vercel-deployment",
-    "github-development", "google", "slack", "microsoft365",
+    "github", "google", "slack", "microsoft365",
     "qq-mail", "tencent-docs",
 }
 
@@ -73,7 +73,7 @@ APP_DECLARATIONS = {
     "sentry-debugging": {"sentry": "sentry"},
     "supabase-development": {"supabase": "supabase"},
     "vercel-deployment": {"vercel": "vercel"},
-    "github-development": {"github": "github"},
+    "github": {"github": "github"},
     # design-suite's apps are optional integrations (previously
     # required: false) — stays authentication: on_use.
     "design-suite": {
@@ -91,6 +91,17 @@ APP_DECLARATIONS = {
 }
 
 IGNORE_SHUTIL = shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store")
+
+# Plugin names the curator has explicitly removed from the marketplace.
+# The script will skip:
+#   - regenerating a plugin dir for any DENYLIST entry in step 3
+#   - writing an app declaration for it in step 4
+#   - including it in marketplace.json (because step 5 only scans dirs)
+# Edits here are the single source of truth for "do not re-add".
+DENYLIST = {
+    "google",         # not in the priority list (2026-09-29 curator pass)
+    "microsoft365",   # not in the priority list (2026-09-29 curator pass)
+}
 
 
 def parse_frontmatter(skill_md: Path) -> dict:
@@ -182,6 +193,12 @@ if (PLUGINS / "skills").is_dir():
 
 # 3. Connector plugins ---------------------------------------------------------
 for provider, info in CONNECTORS.items():
+    if provider in DENYLIST:
+        # Curator opted out: do NOT (re)create this connector plugin.
+        # If a stale dir still exists from a previous run, leave it alone
+        # so the curator's manual removal stays effective.
+        print(f"connector (denied): {provider}")
+        continue
     dst = PLUGINS / provider
     if dst.exists():
         shutil.rmtree(dst)
@@ -209,13 +226,25 @@ for name, apps in APP_DECLARATIONS.items():
     if plugin_dir.is_dir() and name not in CONNECTORS:
         write_app_declaration(plugin_dir, apps)
         remove_stale_apps_dir(plugin_dir)
-        print(f"app declaration: {name} -> {sorted(apps)}")# Remove superseded duplicate plugins (builtin github/notion are replaced by
-# the plan-313 packs github-development / notion-knowledge).
-for dup in ("github", "notion"):
+        print(f"app declaration: {name} -> {sorted(apps)}")# Remove superseded duplicate plugins (builtin notion is replaced by the
+# plan-313 pack notion-knowledge). NOTE: after the rename, the github
+# plan-313 pack now lives at plugins/github/ — DO NOT add "github" to this
+# loop, or this script will rmtree our own plugin on every regeneration.
+#
+# Conditional dedupe: only rmtree the older dir when the replacement
+# plan-313 pack actually exists as a plugin directory. Otherwise we'd be
+# deleting the user's only copy with nothing to take its place.
+for dup, replacement in (
+    ("notion", "notion-knowledge"),
+):
     dup_dir = PLUGINS / dup
+    replacement_dir = PLUGINS / replacement
     if dup_dir.is_dir():
-        shutil.rmtree(dup_dir)
-        print(f"removed duplicate: {dup} (superseded by plan-313 pack)")
+        if replacement_dir.is_dir():
+            shutil.rmtree(dup_dir)
+            print(f"removed duplicate: {dup} (superseded by plan-313 pack {replacement})")
+        else:
+            print(f"keep duplicate: {dup} (no plan-313 pack {replacement}/ on disk)")
 
 # 5. Catalog entries for every plugin dir --------------------------------------
 def plugin_category(plugin_dir: Path, fallback: str) -> str:

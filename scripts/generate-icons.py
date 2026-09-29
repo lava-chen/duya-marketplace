@@ -91,7 +91,7 @@ PROVIDER_BRAND = {
 
 PACK_PROVIDER = {
     "figma-design": "figma",
-    "github-development": "github",
+    "github": "github",
     "notion-knowledge": "notion",
     "linear-project-execution": "linear",
     "sentry-debugging": "sentry",
@@ -148,7 +148,7 @@ def svg_tabler(paths: list[str]) -> str:
 
 
 DEFAULT_PROMPTS = {
-    "github-development": [
+    "github": [
         "Summarize open PRs awaiting my review",
         "Investigate the failing CI run on main",
         "Draft release notes for the last tag",
