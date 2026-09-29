@@ -47,7 +47,7 @@ optional integrations.
 ## Deduplication policy
 
 - builtin `github` / `notion` are **not** mirrored: the richer plan-313
-  packs `github-development` / `notion-knowledge` supersede them and carry
+  packs `github` / `notion-knowledge` supersede them and carry
   their app connections via `.app.json`.
 - `wecom` stays as the builtin plugin (credentials-based setup, no OAuth
   connector plugin).

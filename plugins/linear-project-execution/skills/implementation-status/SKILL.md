@@ -61,7 +61,7 @@ blockers. This skill is the daily-standup and weekly-status path
   ingest the entire comment history.
 - For linked PRs, parse the issue description and comments for
   GitHub URLs. The Linear MCP does not return a structured
-  `linked_prs` field; use the GitHub Development plugin to
+  `linked_prs` field; use the GitHub plugin to
   verify the PR state.
 
 ## Confirmation boundary
@@ -78,7 +78,7 @@ on the report is `write` — confirm with the user first.
   names.
 - A `Done` state does not mean the PR is merged. The developer
   may have marked the issue done before the PR landed; cross-
-  reference with the GitHub Development plugin for a true
+  reference with the GitHub plugin for a true
   completion signal.
 - Linear's `updatedAt` field updates on any change, including
   label edits and re-assigns. A stale `updatedAt` is a strong

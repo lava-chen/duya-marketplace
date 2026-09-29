@@ -1,9 +1,0 @@
-{
-  "servers": [
-    {
-      "name": "literature",
-      "command": "node",
-      "args": ["./agent-bundle/literature-mcp-server.js"]
-    }
-  ]
-}

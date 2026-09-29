@@ -14,7 +14,7 @@ prompt: |
      to read the title, description, labels, and linked PRs. Read
      the comments via `linear.list_comments(issue_id)` to check for
      an existing PR — duplicates are common.
-  2. Run the GitHub Development plugin's `repository-exploration`
+  2. Run the GitHub plugin's `repository-exploration`
      skill if you have not already built a layout map in this
      session. Use `repos.get_file_contents` to read candidate files
      — do not guess from file names alone.
@@ -27,7 +27,7 @@ prompt: |
      file) or the workspace push flow (multiple files). Use a
      conventional commit message matching the repo's style.
   6. Open a PR with `pull_requests.create` via the GitHub
-     Development plugin. The PR body must:
+     plugin. The PR body must:
      - Reference the Linear issue (`Closes LIN-<id>` or the issue
        URL — Linear auto-links the PR to the issue when the
        identifier is in the PR body).

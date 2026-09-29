@@ -1,7 +1,7 @@
 {
   "name": "slack",
   "version": "0.1.0",
-  "description": "通过 OAuth 连接 Slack 工作区。为发布或读取频道消息的插件提供 slack 应用连接。",
+  "description": "Slack workspace connector via OAuth. Provides the 'slack' app connection for plugins that post or read channel messages.",
   "author": {
     "name": "DUYA Team",
     "url": "https://github.com/lava-chen/duya"
@@ -15,17 +15,8 @@
   ],
   "interface": {
     "displayName": "Slack",
-    "shortDescription": "通过 OAuth 连接 Slack 工作区，发布或读取频道消息。",
-    "longDescription": "通过 OAuth 连接 Slack 工作区。为发布或读取频道消息的插件提供 slack 应用连接。",
-    "category": "communication",
-    "icon": "./assets/icon.svg",
-    "brandColor": "#E01E5A",
-    "defaultPrompt": [
-      "Summarize unread messages in #dev",
-      "Post this update to the team channel",
-      "Find the thread about the outage"
-    ],
-    "displayName_zh": "Slack",
-    "shortDescription_zh": "通过 OAuth 连接 Slack 工作区，发布或读取频道消息。"
+    "shortDescription": "Slack workspace connector via OAuth. Provides the 'slack' app connection for plugins that post or read channel messages.",
+    "longDescription": "Slack workspace connector via OAuth. Provides the 'slack' app connection for plugins that post or read channel messages.",
+    "category": "communication"
   }
 }

@@ -4,7 +4,7 @@ Read a Linear issue, locate the relevant code, implement the
 change, and open a PR that closes the issue. This skill is the
 canonical end-to-end path for "implement issue X" — it composes
 `repository-exploration` and `issue-to-implementation` from the
-GitHub Development plugin with the Linear read/write tools.
+GitHub plugin with the Linear read/write tools.
 
 ## When to use
 
@@ -20,7 +20,7 @@ GitHub Development plugin with the Linear read/write tools.
 1. Call `linear.get_issue(issue_id)` to read the issue. Read the
    title, description, labels, and linked PRs carefully —
    duplicates are common.
-2. Run the GitHub Development plugin's `repository-exploration`
+2. Run the GitHub plugin's `repository-exploration`
    skill if you have not already built a layout map in this
    session.
 3. Locate the code that needs to change. Use
@@ -35,7 +35,7 @@ GitHub Development plugin with the Linear read/write tools.
    file) or the workspace push flow (multiple files). Use a
    conventional commit message matching the repo's style.
 7. Open a PR with `pull_requests.create` via the GitHub
-   Development plugin. The PR body must:
+   plugin. The PR body must:
    - Reference the Linear issue (`Closes LIN-123` or the issue
      URL — Linear auto-links the PR to the issue when the
      identifier is in the PR body).
@@ -54,7 +54,7 @@ GitHub Development plugin with the Linear read/write tools.
 - `linear.get_issue(issue_id)` returns the issue detail. The
   `description` is markdown; the `labels` are objects with
   `name` and `color`.
-- For code reads and edits, use the GitHub Development plugin's
+- For code reads and edits, use the GitHub plugin's
   tools (`repos.get_file_contents`, `repos.create_or_update_file`,
   `pull_requests.create`). Do not duplicate them here.
 - `linear.create_comment(issue_id, body)` posts a comment. The
