@@ -5,6 +5,18 @@
   },
   "plugins": [
     {
+      "name": "documents",
+      "source": {
+        "source": "local",
+        "path": "./plugins/documents"
+      },
+      "policy": {
+        "installation": "available",
+        "authentication": "on_use"
+      },
+      "category": "productivity"
+    },
+    {
       "name": "feishu",
       "source": {
         "source": "local",
@@ -65,6 +77,18 @@
       "category": "automation"
     },
     {
+      "name": "presentations",
+      "source": {
+        "source": "local",
+        "path": "./plugins/presentations"
+      },
+      "policy": {
+        "installation": "available",
+        "authentication": "on_use"
+      },
+      "category": "productivity"
+    },
+    {
       "name": "slack",
       "source": {
         "source": "local",
@@ -75,6 +99,18 @@
         "authentication": "on_install"
       },
       "category": "communication"
+    },
+    {
+      "name": "spreadsheets",
+      "source": {
+        "source": "local",
+        "path": "./plugins/spreadsheets"
+      },
+      "policy": {
+        "installation": "available",
+        "authentication": "on_use"
+      },
+      "category": "productivity"
     },
     {
       "name": "supabase",
