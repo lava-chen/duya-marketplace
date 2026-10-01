@@ -44,6 +44,19 @@ connection is core to their function (the connector plugins and the
 provider packs); `design-suite` keeps `on_use` because its apps are
 optional integrations.
 
+## Office suite (hand-maintained, codex-aligned)
+
+`documents`, `pdf`, `presentations`, and `spreadsheets` are hand-maintained
+here (the builtin sources in duya were consolidated; the marketplace copy is
+authoritative). Their office skills are the duya-adapted pipelines upgraded
+with portable capability assets from OpenAI Codex's office plugin
+implementation (`openai-primary-runtime` in the Codex plugin cache, 2026-09):
+the docx script/toolkit suite, the new-generation PDF workflow with AcroForm
+repair, the presentations writing-quality/template guidance, and the
+spreadsheets workbook-architecture/domain guidance. Codex-runtime-bound parts
+(artifact tool, container tools, ChatGPT add-in live control) are
+deliberately NOT ported.
+
 ## Deduplication policy
 
 - builtin `github` / `notion` are **not** mirrored: the richer plan-313

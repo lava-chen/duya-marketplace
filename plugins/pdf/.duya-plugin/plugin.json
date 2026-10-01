@@ -1,0 +1,32 @@
+{
+  "name": "pdf",
+  "version": "0.2.0",
+  "description": "Read, create, inspect, render, verify, and extract PDF files with duya's pdf office skill.",
+  "author": {
+    "name": "Duya"
+  },
+  "homepage": "https://github.com/lava-chen/duya",
+  "license": "MIT",
+  "keywords": [
+    "pdf",
+    "pdfs",
+    "document",
+    "documents",
+    "report",
+    "render",
+    "review",
+    "extract",
+    "extraction"
+  ],
+  "interface": {
+    "displayName": "PDF",
+    "shortDescription": "Read, create, and verify PDF files",
+    "longDescription": "Read, create, inspect, render, verify, and extract content from PDF files locally, including fillable AcroForm handling with widget/field-tree repair and flatten verification. Poppler rendering plus reportlab, pdfplumber, and pypdf. Use PDF when the durable output or target is a PDF file and visual layout fidelity matters.",
+    "category": "productivity",
+    "brandColor": "#DC2626",
+    "icon": "./assets/icon.svg",
+    "screenshots": [],
+    "displayName_zh": "PDF 处理",
+    "shortDescription_zh": "读取、创建和验证 PDF 文件。"
+  }
+}
