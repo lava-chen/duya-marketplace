@@ -4,13 +4,15 @@ Supabase and PostgreSQL development and data-analysis integration — covering m
 
 ## What this plugin adds
 
-Seven sub-skills covering the full Supabase and PostgreSQL development lifecycle:
+Nine sub-skills covering the full Supabase and PostgreSQL development lifecycle:
 
 **Development (Supabase)**
 - **`auth-and-security`** — Audit Supabase auth configuration, RLS coverage, and service-role key exposure. The security gate for every Supabase project.
 - **`edge-function-workflow`** — Draft, review, and manage Supabase Edge Functions for webhook handling and serverless logic.
 - **`migration-workflow`** — Review and manage Supabase Postgres migrations safely with confirmation gates.
 - **`postgres-best-practices`** — Review Postgres schema and query patterns against Supabase best practices.
+- **`postgres-patterns`** — Deep Postgres performance rule library maintained by Supabase (schema, queries, indexes, connections, locks, monitoring) with per-topic reference docs.
+- **`supabase-core`** — Official Supabase skill: changelog-verified guidance, security checklist (RLS, views, service role, storage), CLI gotchas, and MCP usage.
 
 **Data Analysis (PostgreSQL)**
 - **`data-analysis`** — Run analytical queries against PostgreSQL with explicit read-only guards.
@@ -31,6 +33,8 @@ Each sub-skill has its own connection requirements:
 | `edge-function-workflow` | Supabase access token + project ref |
 | `migration-workflow` | Supabase access token + project ref |
 | `postgres-best-practices` | Supabase access token + project ref |
+| `postgres-patterns` | None (reference knowledge) |
+| `supabase-core` | None (reference knowledge) |
 | `data-analysis` | PostgreSQL read-only connection string |
 | `safe-query` | PostgreSQL read-only connection string |
 | `schema-inspection` | PostgreSQL read-only connection string |

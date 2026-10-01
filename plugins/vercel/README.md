@@ -18,7 +18,7 @@ skills or workflows.
   agent can list projects and deployments, read build and runtime
   logs, manage environment variables, and promote a deployment to
   production.
-- Four skills:
+- Workflow skills:
   - `deployment-inspection` — list and inspect deployments, surfacing
     the build state, environment, and alias.
   - `log-diagnosis` — read build and runtime logs, classify the
@@ -27,6 +27,19 @@ skills or workflows.
     validate it against a checklist before promoting.
   - `production-release` — promote a verified deployment to
     production. The single most dangerous action in this plugin.
+- Platform knowledge skills (ported from the official Vercel agent
+  skill library, 2026-09):
+  - `vercel-api` — MCP server + REST API expert guidance.
+  - `vercel-cli` — CLI expert guidance (linking, env, logs, domains).
+  - `deployments-cicd` — deploy/promote/rollback, `--prebuilt`, CI
+    workflow files for GitHub/GitLab/Bitbucket.
+  - `env-vars` — `.env` hierarchy, `vercel env`, OIDC tokens.
+  - `vercel-functions` — Serverless/Edge Functions, Fluid Compute,
+    streaming, WebSockets.
+  - `vercel-storage` — Blob, Edge Config, Marketplace storage.
+  - `observability` — drains, Web Analytics, Speed Insights, OTel.
+  - `verification` — full-story end-to-end verification flow.
+  - `cron-jobs` — `vercel.json` cron configuration.
 - Four workflow templates (YAML drafts, activated when Plan 311
   lands): diagnose-deployment-failure, create-and-validate-preview,
   analyze-web-analytics, promote-to-production.
