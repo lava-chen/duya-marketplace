@@ -8,6 +8,7 @@ import { uploadAsset } from "..//ipc/conductor-ipc";
 import { LinkCreateDialog } from "./LinkCreateDialog";
 import { DocumentCreateDialog } from "./DocumentCreateDialog";
 import { DatabaseCreateDialog } from "./DatabaseCreateDialog";
+import { ConductorSettings } from "./ConductorSettings";
 import type { NativeDatabaseElementConfig } from "../../database/types";
 import { DRAGGABLE_CREATE_TOOL_IDS, getCanvasToolDragPayload } from "../domain/canvas/toolbar-drag";
 import type { LinkContent } from "..//types/canvas-node";
@@ -16,7 +17,7 @@ import { useTranslation } from "@/hooks/useTranslation";
 import {
   ArrowElbowDownRightIcon,
   ArrowUpRightIcon,
-  ChatCirclePlusIcon,
+  GearSixIcon,
   CircleIcon,
   DiamondIcon,
   HexagonIcon,
@@ -251,6 +252,7 @@ export function CanvasToolbar() {
   const activeCanvasId = useConductorStore((s) => s.activeCanvasId);
   const activeCanvas = useConductorStore((s) => s.canvases.find((canvas) => canvas.id === s.activeCanvasId));
   const setUiError = useConductorStore((s) => s.setUiError);
+  const setConductorSettingsOpen = useConductorStore((s) => s.setConductorSettingsOpen);
 
   const barRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -303,22 +305,14 @@ export function CanvasToolbar() {
   }, [setActiveTool]);
 
   const startCreateDocument = useCallback((content?: Record<string, unknown>) => {
-    if (!activeCanvas?.projectPath) {
-      setUiError(t("conductor.toolbar.markdownFolderRequired"));
-      return;
-    }
     setActiveTool(createToolValue("document", content));
     setDocumentDialogOpen(false);
-  }, [activeCanvas?.projectPath, setActiveTool, setUiError, t]);
+  }, [setActiveTool]);
 
   const startCreateDatabase = useCallback((content: NativeDatabaseElementConfig & { sourceTitle: string }) => {
     setActiveTool(createToolValue("database", content as unknown as Record<string, unknown>));
     setDatabaseDialogOpen(false);
   }, [setActiveTool]);
-
-  const handleNewConversation = useCallback(async () => {
-    setUiError("Conversation controls are available from the DUYA chat, outside this standalone App.");
-  }, []);
 
   const handleClick = useCallback((tool: Tool, e: React.MouseEvent) => {
     if (tool.id === "document") {
@@ -327,10 +321,6 @@ export function CanvasToolbar() {
     }
 
     if (tool.id === "database") {
-      if (!activeCanvas?.projectPath) {
-        setUiError(t("conductor.toolbar.databaseFolderRequired"));
-        return;
-      }
       setDatabaseDialogOpen(true);
       return;
     }
@@ -422,17 +412,19 @@ export function CanvasToolbar() {
       <div className="canvas-toolbar__divider" />
 
       <div className="relative">
-        <ToolbarTooltip label="conductor.toolbar.newConversation">
+        <ToolbarTooltip label="conductor.settings.title">
           <button
             type="button"
-            onClick={handleNewConversation}
+            onClick={() => setConductorSettingsOpen(true)}
             className="conductor-tool-button"
+            aria-label="Canvas settings"
           >
             <div className="w-[21px] h-[21px]">
-              <ChatCirclePlusIcon size={21} />
+              <GearSixIcon size={21} />
             </div>
           </button>
         </ToolbarTooltip>
+        <ConductorSettings />
       </div>
 
       {openSubmenu && (

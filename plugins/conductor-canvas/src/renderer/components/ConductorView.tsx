@@ -42,6 +42,7 @@ export function ConductorView() {
     updateElement,
     removeElement,
     loadConductorSettings,
+    fetchConductorModels,
   } = useConductorStore();
 
   const [isLoading, setIsLoading] = useState(true);
@@ -71,7 +72,8 @@ export function ConductorView() {
   // mode) once on mount. Non-blocking — settings just appear when ready.
   useEffect(() => {
     loadConductorSettings().catch(() => {});
-  }, [loadConductorSettings]);
+    fetchConductorModels().catch(() => {});
+  }, [fetchConductorModels, loadConductorSettings]);
 
   // Register the agent-initiated canvas capture listener. Extracted to
   // a shared hook so both this view and SidebarConductorView respond

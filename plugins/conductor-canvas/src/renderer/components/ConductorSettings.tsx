@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { GearSixIcon, XIcon, EyeIcon, LightningIcon, ShieldWarningIcon, CheckIcon } from "@/components/icons";
 import { useConductorStore } from "../stores/conductor-store";
 import type { ModelOption } from "../host";
+import { useConductorHost } from "../host";
 
 /**
  * Conductor settings popover.
@@ -24,6 +25,7 @@ import type { ModelOption } from "../host";
  * on outside click or Escape.
  */
 export function ConductorSettings() {
+  const host = useConductorHost();
   const open = useConductorStore((s) => s.conductorSettingsOpen);
   const setOpen = useConductorStore((s) => s.setConductorSettingsOpen);
   const loading = useConductorStore((s) => s.conductorSettingsLoading);
@@ -37,6 +39,50 @@ export function ConductorSettings() {
 
   const permissionMode = useConductorStore((s) => s.conductorPermissionMode);
   const setConductorPermissionMode = useConductorStore((s) => s.setConductorPermissionMode);
+  const fetchConductorModels = useConductorStore((s) => s.fetchConductorModels);
+  const [providerStatus, setProviderStatus] = useState<{ configured: boolean; baseURL?: string; model?: string; providerType?: string; hasApiKey: boolean } | null>(null);
+  const [providerBaseURL, setProviderBaseURL] = useState("");
+  const [providerModel, setProviderModel] = useState("");
+  const [providerApiKey, setProviderApiKey] = useState("");
+  const [providerSaving, setProviderSaving] = useState(false);
+  const [providerError, setProviderError] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    void host.providers.status().then((status) => {
+      if (!active) return;
+      setProviderStatus(status);
+      setProviderBaseURL(status.baseURL || "");
+      setProviderModel(status.model || "");
+    }).catch((error) => {
+      if (active) setProviderError(error instanceof Error ? error.message : String(error));
+    });
+    return () => { active = false; };
+  }, [host, open]);
+
+  const saveProvider = async () => {
+    if (!providerBaseURL.trim() || !providerModel.trim()) {
+      setProviderError("Enter a provider URL and model name.");
+      return;
+    }
+    setProviderSaving(true);
+    setProviderError("");
+    try {
+      await host.providers.configure({
+        baseURL: providerBaseURL.trim(),
+        model: providerModel.trim(),
+        ...(providerApiKey.trim() ? { secretAPIkey: providerApiKey.trim() } : {}),
+      });
+      setProviderApiKey("");
+      setProviderStatus(await host.providers.status());
+      await fetchConductorModels();
+    } catch (error) {
+      setProviderError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setProviderSaving(false);
+    }
+  };
 
   if (!open) return null;
 
@@ -94,6 +140,20 @@ export function ConductorSettings() {
           onChange={setConductorPermissionMode}
         />
       </SettingsRow>
+      <div className="px-3.5 py-3" style={{ borderBottom: "1px solid var(--conductor-border)" }}>
+        <div style={{ color: "var(--text-primary)", fontSize: 12, fontWeight: 500 }}>Plugin provider</div>
+        <p className="mt-0.5 mb-2" style={{ color: "var(--text-tertiary)", fontSize: 11 }}>Optional OpenAI compatible endpoint used for models and Refine. API keys stay in plugin storage.</p>
+        <div className="grid gap-2">
+          <input aria-label="Provider base URL" className="rounded-md border px-2 py-1.5 text-xs" value={providerBaseURL} onChange={(event) => setProviderBaseURL(event.target.value)} placeholder="https://api.example.com/v1" />
+          <input aria-label="Provider model" className="rounded-md border px-2 py-1.5 text-xs" value={providerModel} onChange={(event) => setProviderModel(event.target.value)} placeholder="Model name" />
+          <input aria-label="Provider API key" className="rounded-md border px-2 py-1.5 text-xs" type="password" autoComplete="new-password" value={providerApiKey} onChange={(event) => setProviderApiKey(event.target.value)} placeholder={providerStatus?.hasApiKey ? "API key stored; leave blank to keep" : "API key (optional for local providers)"} />
+          {providerError && <p role="alert" className="text-xs text-red-600">{providerError}</p>}
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] text-muted-foreground">{providerStatus?.configured ? `Connected${providerStatus.providerType ? ` · ${providerStatus.providerType}` : ""}` : "No provider configured"}</span>
+            <button type="button" onClick={() => void saveProvider()} disabled={providerSaving} className="rounded-md bg-indigo-600 px-2.5 py-1 text-xs text-white disabled:opacity-50">{providerSaving ? "Saving…" : "Save provider"}</button>
+          </div>
+        </div>
+      </div>
     </SettingsPopover>
   );
 }

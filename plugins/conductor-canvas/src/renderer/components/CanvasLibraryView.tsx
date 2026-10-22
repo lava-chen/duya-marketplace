@@ -217,10 +217,10 @@ export function CanvasLibraryView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleIdsKey]);
 
-  const handleCreateCanvas = async (name: string) => {
+  const handleCreateCanvas = async (name: string, projectPath = "") => {
     if (!name.trim()) return;
     try {
-      const canvas = await createCanvas(name.trim(), undefined, null);
+      const canvas = await createCanvas(name.trim(), undefined, projectPath.trim() || null);
       addCanvas(canvas);
       setNewCanvasOpen(false);
       onOpenCanvas(canvas.id);
@@ -557,6 +557,7 @@ export function CanvasLibraryView({
         isOpen={newCanvasOpen}
         title="新建画布"
         placeholder="输入画布名称"
+        secondaryPlaceholder="/path/to/project (enables database workbench)"
         onConfirm={handleCreateCanvas}
         onCancel={() => setNewCanvasOpen(false)}
       />

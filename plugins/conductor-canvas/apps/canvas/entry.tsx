@@ -1,19 +1,31 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { ConductorHostContext, type ConductorHost } from "../../src/renderer/host";
+import { ConductorHostContext, type ConductorHost, type ConductorProvider, type ConductorProviderStatus } from "../../src/renderer/host";
 import { pluginBridge } from "../../src/renderer/plugin-bridge";
 import { ConductorView } from "../../src/renderer/components/ConductorView";
 import "../../src/app.css";
 
-const settingCache = new Map<string, unknown>();
 const host: ConductorHost = {
-  listProviders: async () => [],
-  agent: { callRefine: async () => { throw new Error("Refine requires a provider capability that this App has not been granted."); } },
+  listProviders: async () => {
+    const result = await pluginBridge.call<{ providers?: ConductorProvider[] }>("canvas_provider_list");
+    return result.providers ?? [];
+  },
+  agent: { callRefine: async (args) => pluginBridge.call("canvas_refine_call", args) },
+  providers: {
+    status: async () => pluginBridge.call<ConductorProviderStatus>("canvas_provider_status"),
+    configure: async (args) => { await pluginBridge.call("canvas_provider_configure", args); },
+  },
   settings: {
-    getJson: async <T,>(key: string, fallback: T): Promise<T> => settingCache.has(key) ? settingCache.get(key) as T : fallback,
-    setJson: async <T,>(key: string, value: T) => { settingCache.set(key, value); },
-    getString: async (key: string) => typeof settingCache.get(key) === "string" ? settingCache.get(key) as string : null,
-    setString: async (key: string, value: string) => { settingCache.set(key, value); },
+    getJson: async <T,>(key: string, fallback: T): Promise<T> => {
+      const result = await pluginBridge.call<{ value?: T }>("canvas_settings_get", { key });
+      return result && Object.hasOwn(result, "value") ? result.value as T : fallback;
+    },
+    setJson: async <T,>(key: string, value: T) => { await pluginBridge.call("canvas_settings_set", { key, value }); },
+    getString: async (key: string) => {
+      const result = await pluginBridge.call<{ value?: unknown }>("canvas_settings_get", { key });
+      return typeof result?.value === "string" ? result.value : null;
+    },
+    setString: async (key: string, value: string) => { await pluginBridge.call("canvas_settings_set", { key, value }); },
   },
 };
 

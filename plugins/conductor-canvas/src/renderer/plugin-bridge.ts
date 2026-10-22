@@ -1,4 +1,5 @@
 const CHANNEL = "duya.plugin-app";
+import { decodeToolResult } from "./decode-tool-result.mjs";
 type ToolEntry = { toolId: string; toolName: string; serverName?: string };
 
 class PluginBridge {
@@ -14,7 +15,7 @@ class PluginBridge {
       }, 45_000);
       const receive = (event: MessageEvent) => {
         const data = event.data;
-        if (!data || data.channel !== CHANNEL || data.id !== id) return;
+        if (event.source !== window.parent || !data || data.channel !== CHANNEL || data.id !== id) return;
         window.clearTimeout(timer);
         window.removeEventListener("message", receive);
         if (data.ok === false) reject(new Error(data.result?.message || data.error || "Canvas App host request failed."));
@@ -38,7 +39,7 @@ class PluginBridge {
   async revoke(): Promise<void> {
     this.bound = false;
     this.tools = [];
-    try { await this.request("unbind"); } catch { /* host may already have revoked the App */ }
+    try { await this.request("revoke"); } catch { /* host may already have revoked the App */ }
   }
 
   async call<T = any>(toolName: string, args: Record<string, unknown> = {}): Promise<T> {
@@ -46,17 +47,7 @@ class PluginBridge {
     const tool = this.tools.find((item) => item.toolName === toolName);
     if (!tool) throw new Error(`Canvas capability does not grant ${toolName}.`);
     const response = await this.request("invoke", { toolId: tool.toolId, arguments: args });
-    const outer = response.result || {};
-    if (response.ok === false || outer.error) throw new Error(outer.error?.message || outer.message || `Canvas tool ${toolName} failed.`);
-    let value = outer.result ?? outer.structuredContent ?? outer.structured ?? outer;
-    if (value && Array.isArray(value.content)) {
-      const text = value.content.find((item: any) => item.type === "text")?.text;
-      if (typeof text === "string") {
-        try { value = JSON.parse(text); } catch { if (value.isError) throw new Error(text); }
-      }
-    }
-    if (value?.isError) throw new Error(value.content?.[0]?.text || `Canvas tool ${toolName} failed.`);
-    return value as T;
+    return decodeToolResult<T>(response, toolName);
   }
 
   get isBound(): boolean { return this.bound; }

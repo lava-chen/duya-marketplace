@@ -105,6 +105,19 @@ export interface ConductorAgent {
   }): Promise<RefineLlmResponse>;
 }
 
+export interface ConductorProviderStatus {
+  configured: boolean;
+  baseURL?: string;
+  model?: string;
+  providerType?: string;
+  hasApiKey: boolean;
+}
+
+export interface ConductorProviderSetup {
+  status: () => Promise<ConductorProviderStatus>;
+  configure: (args: { baseURL: string; model: string; secretAPIkey?: string }) => Promise<void>;
+}
+
 /**
  * Settings access contract for the conductor. The host wraps its
  * settings storage (e.g. Electron's settingsDb) behind this typed
@@ -128,6 +141,7 @@ export interface ConductorHostSettings {
 export interface ConductorHost {
   listProviders: () => Promise<ConductorProvider[]>;
   agent: ConductorAgent;
+  providers: ConductorProviderSetup;
   /** Settings persistence (model, vision model, permission mode, etc.) */
   settings: ConductorHostSettings;
 }

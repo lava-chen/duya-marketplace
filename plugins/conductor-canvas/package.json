@@ -5,7 +5,8 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite --host 127.0.0.1",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:bridge": "node --test test/plugin-bridge.test.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.11",
