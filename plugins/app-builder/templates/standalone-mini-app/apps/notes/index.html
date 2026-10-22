@@ -24,6 +24,7 @@
   <ul id="notes"></ul>
   <script>
     const channel = 'duya.plugin-app';
+    const documentToken = location.pathname.split('/')[1];
     let tools = [];
     function request(method, fields = {}) {
       return new Promise((resolve, reject) => {
@@ -36,7 +37,7 @@
           else resolve(event.data.result);
         }
         window.addEventListener('message', receive);
-        window.parent.postMessage({ channel, id, method, ...fields }, '*');
+        window.parent.postMessage({ channel, id, method, ...fields, documentToken }, '*');
       });
     }
     async function call(name, args = {}) {

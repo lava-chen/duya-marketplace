@@ -7,6 +7,8 @@ and UI. Keep the matching declarations in `.duya-plugin/plugin.json`,
 The `apps/notes/index.html` page communicates only through the generic
 `duya.plugin-app` `bind` / `invoke` message protocol; it has no DUYA preload or
 Canvas-specific IPC dependency.
+Each request includes `documentToken` from the first path segment of the
+session-scoped App URL, and responses are accepted only from `window.parent`.
 
 Keep the plugin ID stable across updates. It identifies the installed plugin
 and its persistent data directory. Keep the App ID stable too; increment

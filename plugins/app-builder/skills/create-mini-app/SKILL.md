@@ -18,6 +18,10 @@ project, then adapt it. Never modify DUYA core to implement an individual App.
 2. Implement the App UI under `apps/`. It has no Electron preload and calls
    only the `duya.plugin-app` `bind` and `invoke` message protocol. Every tool
    it invokes must appear in `requiredCapabilities` and `capabilityTools`.
+   Include the transport `documentToken` from `location.pathname.split('/')[1]`
+   on every request, and accept responses only from `window.parent`. DUYA
+   serves the App from a session-scoped loopback URL; the token binds messages
+   to the package document that was opened.
 3. Implement the MCP tool handlers in the plugin. Declare the server in
    `mcp/servers.json`, use `${DUYA_PLUGIN_ROOT}` for code and
    `${DUYA_PLUGIN_DATA}` for persistent data. Keep server names and tool names
