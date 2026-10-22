@@ -62,9 +62,11 @@ try {
       permissions: parse(element.permissions, {}), metadata: parse(element.metadata, {}),
       createdAt: element.created_at, updatedAt: element.updated_at,
     }));
-    const canvasAssetDir = row.project_path
-      ? path.join(row.project_path, '.duya', 'assets', row.id)
-      : assetRoot ? path.join(assetRoot, row.id) : null;
+    const assetCandidates = [
+      row.project_path ? path.join(row.project_path, '.duya', 'assets', row.id) : null,
+      assetRoot ? path.join(assetRoot, row.id) : null,
+    ].filter(Boolean);
+    const canvasAssetDir = assetCandidates.find((candidate) => fs.existsSync(candidate));
     if (canvasAssetDir && fs.existsSync(canvasAssetDir)) {
       for (const entry of fs.readdirSync(canvasAssetDir, { withFileTypes: true })) {
         if (!entry.isFile() || entry.name.endsWith('.json')) continue;

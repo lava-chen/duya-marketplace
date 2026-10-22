@@ -19,7 +19,7 @@
       "apps": [
         {
           "appId": "canvas",
-          "entry": "apps/canvas/index.html",
+          "entry": "apps/canvas/build/index.html",
           "runtime": "standalone",
           "requiredCapabilities": ["conductor.canvas"],
           "capabilityTools": [{
