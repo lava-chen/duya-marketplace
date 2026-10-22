@@ -7,19 +7,15 @@ rendering, lifecycle, capability approval, scoped MCP access, and updates.
 The host must not contain Canvas tool names, canvas state, Canvas IPC routes,
 or calls into DUYA's Conductor package for this plugin.
 
-## Current host gaps
+## Host integration status
 
-1. Plugin App launch requires a chat session, and `bind` requires an active
-   agent run. A user cannot keep an editor open and call its MCP service after
-   that run finishes.
-2. Invocation bindings expire after five minutes. App sessions need their own
-   revocable lifetime, independent of agent attempts. Revocation, manifest
-   drift, plugin disable, and package replacement must still fence calls.
-3. MCP reload exists for the agent worker, but the App guest, tool catalog,
-   and binding are not atomically replaced when a plugin updates. The generic
-   host needs a versioned App session and update/reopen signal.
-4. The capability grant ledger has an authenticated Host API, but there is no
-   completed user approval flow for installed App capabilities.
+The corresponding DUYA development branch adds a generic standalone App
+runtime: launch without a chat run, a revocable App lifetime, explicit MCP
+capability approval, and reload notification on plugin changes. The agent's
+MCP service and the Mini App's service are separate processes. The plugin
+store uses a cross-process lock so those processes do not overwrite each
+other. Desktop installation and update behavior still need end-to-end review
+before this host contract can be considered stable.
 
 These are generic DUYA plugin platform changes. They must work for any App,
 without references to Canvas in the host implementation.

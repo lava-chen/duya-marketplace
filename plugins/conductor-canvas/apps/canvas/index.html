@@ -96,7 +96,7 @@
       <div class="side-tools" style="padding-top:0"><button class="btn" id="favoritesOnly">☆ 收藏</button><select class="search" id="sortBy"><option value="updatedAt">最近更新</option><option value="name">名称</option><option value="createdAt">创建时间</option></select></div>
       <div class="section-label">我的画布 <span id="canvasCount"></span></div>
       <div class="canvas-list" id="canvasList"></div>
-      <div class="footer"><span class="status-dot" id="statusDot"></span><span id="statusText">未连接当前运行</span></div>
+      <div class="footer"><span class="status-dot" id="statusDot"></span><button class="btn" id="statusText" title="点击重新连接">连接插件服务</button></div>
     </aside>
     <main class="workspace">
       <header class="toolbar">
@@ -106,7 +106,7 @@
         <button class="btn" id="autoLayout">自动排布</button><button class="btn" id="connectElements">连接所选</button><button class="btn" id="groupElements">组合</button><button class="btn primary" id="addElement">＋ 添加</button>
         <span class="divider"></span><button class="btn" id="zoomOut">−</button><button class="btn" id="zoomIn">＋</button>
       </header>
-      <section class="board-wrap" id="boardWrap"><div class="board" id="board"><div class="board-grid"></div><div class="empty" id="emptyState">连接当前运行以打开 Conductor 画布</div></div></section>
+      <section class="board-wrap" id="boardWrap"><div class="board" id="board"><div class="board-grid"></div><div class="empty" id="emptyState">连接插件服务以打开 Conductor 画布</div></div></section>
     </main>
     <aside class="right-panel">
       <div class="panel-head">属性</div>
@@ -127,7 +127,7 @@
       return new Promise(function (resolve, reject) {
         var id = "canvas-" + Math.random().toString(36).slice(2);
         var timer = setTimeout(function () { window.removeEventListener("message", receive); reject(new Error("Host 调用超时")); }, 45000);
-        function receive(event) { var data = event.data; if (!data || data.channel !== CHANNEL || data.id !== id) return; clearTimeout(timer); window.removeEventListener("message", receive); if (data.ok === false) reject(new Error(data.error || "Host 调用失败")); else resolve(data); }
+        function receive(event) { var data = event.data; if (!data || data.channel !== CHANNEL || data.id !== id) return; clearTimeout(timer); window.removeEventListener("message", receive); if (data.ok === false) reject(new Error(data.result && data.result.message || data.error || "Host 调用失败")); else resolve(data); }
         window.addEventListener("message", receive);
         var message = { channel: CHANNEL, id: id, method: method };
         if (extra) Object.keys(extra).forEach(function (key) { message[key] = extra[key]; });
@@ -141,9 +141,9 @@
       return result;
     }
     async function callTool(toolName, args) {
-      if (!state.bound) throw new Error("请先连接当前运行");
+      if (!state.bound) throw new Error("请先连接插件服务");
       var tool = state.tools.find(function (entry) { return entry.toolName === toolName; });
-      if (!tool) throw new Error("当前插件运行没有授权工具：" + toolName);
+      if (!tool) throw new Error("插件未获此工具授权：" + toolName);
       var response = await request("invoke", { toolId: tool.toolId, arguments: args || {} });
       if (!response.ok) throw new Error(response.error || (response.message || "Canvas 工具调用失败"));
       var result = response.result || {};
@@ -154,10 +154,10 @@
     async function connect() {
       var status = $("statusText"); status.textContent = "正在连接…";
       try {
-        var result = await request("bind"); if (!result.ok) throw new Error(result.error || "无法连接当前运行");
-        state.bound = true; state.tools = result.result && Array.isArray(result.result.tools) ? result.result.tools : []; $("statusDot").classList.add("on"); status.textContent = "已连接当前运行";
+        var result = await request("bind"); if (!result.ok) throw new Error(result.error || "无法连接插件服务");
+        state.bound = true; state.tools = result.result && Array.isArray(result.result.tools) ? result.result.tools : []; $("statusDot").classList.add("on"); status.textContent = "插件服务已连接";
         await refreshCanvases(); toast("已连接 Conductor Canvas");
-      } catch (error) { status.textContent = "连接失败"; toast(String(error.message || error)); }
+      } catch (error) { state.bound = false; $("statusDot").classList.remove("on"); status.textContent = "连接失败 · 重试"; toast(String(error.message || error)); }
     }
     async function refreshCanvases() {
       var result = await callTool("canvas_manage", { action: "list" });
@@ -331,6 +331,7 @@
       } catch (error) { toast(String(error.message || error)); }
     }
     $("newCanvas").addEventListener("click", openCreate);
+    $("statusText").addEventListener("click", connect);
     $("newGroup").addEventListener("click", function () { state.modalMode = "create-group"; $("modalTitle").textContent = "新建分组"; $("modalName").value = ""; $("modalDescription").value = ""; $("modalSave").textContent = "创建"; $("modalBackdrop").classList.add("open"); $("modalName").focus(); });
     $("renameCanvas").addEventListener("click", openRename);
     $("deleteCanvas").addEventListener("click", deleteCanvas);

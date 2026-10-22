@@ -14,6 +14,46 @@ const WIDTH = 40;
 const HEIGHT = 30;
 const MAX_CANVASES = 500;
 const MAX_ELEMENTS = 5000;
+const lockPath = `${storePath}.lock`;
+
+// The agent and a Mini App may each run their own MCP process. Keep the
+// read/modify/write transaction under one cross-process lock so an edit from
+// either process cannot silently overwrite the other's newer snapshot.
+async function withStoreLock(action) {
+  fs.mkdirSync(path.dirname(storePath), { recursive: true });
+  const deadline = Date.now() + 15_000;
+  let fd;
+  while (fd === undefined) {
+    try {
+      const opened = fs.openSync(lockPath, 'wx', 0o600);
+      try { fs.writeSync(opened, String(process.pid)); fd = opened; }
+      catch (writeError) { fs.closeSync(opened); fs.unlinkSync(lockPath); throw writeError; }
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      try {
+        const stat = fs.statSync(lockPath);
+        if (Date.now() - stat.mtimeMs > 60_000) {
+          const pid = Number(fs.readFileSync(lockPath, 'utf8'));
+          let alive = Number.isSafeInteger(pid) && pid > 0;
+          if (alive) {
+            try { process.kill(pid, 0); }
+            catch (probeError) { alive = probeError.code !== 'ESRCH'; }
+          }
+          if (!alive) { fs.unlinkSync(lockPath); continue; }
+        }
+      } catch (statError) {
+        if (statError.code !== 'ENOENT') throw statError;
+      }
+      if (Date.now() >= deadline) fail('Canvas store is busy. Retry the operation.');
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+  try { return await action(); }
+  finally {
+    fs.closeSync(fd);
+    fs.unlinkSync(lockPath);
+  }
+}
 
 function readStore() {
   try {
@@ -124,7 +164,7 @@ const mutatingTools = new Set([
   'canvas_fill_content', 'canvas_style_element', 'canvas_delete_element', 'canvas_apply_layout',
 ]);
 
-async function call(name, input) {
+async function callUnlocked(name, input) {
   const store = readStore();
   let result;
   if (name === 'canvas_manage') {
@@ -268,12 +308,14 @@ async function call(name, input) {
   return result;
 }
 
+function call(name, input) { return withStoreLock(() => callUnlocked(name, input)); }
+
 function send(message) { process.stdout.write(`${JSON.stringify(message)}\n`); }
 function errorResponse(id, error) { return { jsonrpc: '2.0', id, error: { code: -32000, message: error instanceof Error ? error.message : String(error) } }; }
 async function handle(message) {
   if (!message || message.jsonrpc !== '2.0' || message.id === undefined) return null;
   try {
-    if (message.method === 'initialize') return { jsonrpc: '2.0', id: message.id, result: { protocolVersion: message.params?.protocolVersion || '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'conductor_canvas', version: '0.1.0' } } };
+    if (message.method === 'initialize') return { jsonrpc: '2.0', id: message.id, result: { protocolVersion: message.params?.protocolVersion || '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'conductor_canvas', version: '0.2.0' } } };
     if (message.method === 'ping') return { jsonrpc: '2.0', id: message.id, result: {} };
     if (message.method === 'tools/list') return { jsonrpc: '2.0', id: message.id, result: { tools } };
     if (message.method === 'tools/call') {

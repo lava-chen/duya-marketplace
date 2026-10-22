@@ -1,7 +1,7 @@
 {
   "name": "conductor-canvas",
   "id": "com.duya.conductor-canvas",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A self-contained Conductor-style visual workspace with an installable Mini App and MCP editing tools.",
   "author": { "name": "DUYA Team", "url": "https://github.com/lava-chen/duya" },
   "license": "MIT",
@@ -20,6 +20,7 @@
         {
           "appId": "canvas",
           "entry": "apps/canvas/index.html",
+          "runtime": "standalone",
           "requiredCapabilities": ["conductor.canvas"],
           "capabilityTools": [{
             "capability": "conductor.canvas",

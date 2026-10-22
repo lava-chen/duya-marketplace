@@ -6,12 +6,11 @@ import or call DUYA's built-in Conductor implementation.
 
 **Migration status:** This is a smaller, independent editor, not a complete
 replacement for the built-in Canvas. DUYA still contains the original Canvas
-UI, database, and tool execution code. The current Plugin App host requires an
-active chat run to bind MCP tools and expires that binding after five minutes;
-the editor therefore cannot yet operate as a long-lived standalone App. The
-host also lacks a complete App update/reload and capability grant UI flow.
-Installing this plugin does not migrate existing Canvas data or disable the
-built-in Canvas. See [migration boundary](MIGRATION.md).
+UI, database, and tool execution code. The plugin declares a standalone App
+runtime, which requires the corresponding generic DUYA host changes on the
+`codex/browser-plugin-migration` branch. Installing this plugin on an older
+DUYA build does not provide a standalone editor. Existing Canvas data is not
+migrated and the built-in Canvas is not disabled. See [migration boundary](MIGRATION.md).
 
 ## Mini App
 
@@ -43,7 +42,8 @@ Plugin App `bind` / `invoke` protocol.
 
 Canvas data is stored in the plugin's `${DUYA_PLUGIN_DATA}/canvases.json` file.
 The server writes atomically and keeps the file private to the current user.
-The Mini App and agent share the same MCP service and data store.
+The Mini App and agent use separate MCP processes against the same data store;
+a cross-process lock protects each read/modify/write transaction.
 
 The plugin does not read or modify DUYA's private Conductor database.
 Portable JSON import is available, but migration of existing canvases still
