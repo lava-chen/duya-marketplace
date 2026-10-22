@@ -76,6 +76,10 @@
     .empty-detail { color: #989994; padding: 18px 3px; font-size: 12px; }
     .panel-actions { display: flex; gap: 7px; }
     .panel-actions .btn { flex: 1; }
+    .app.presentation { grid-template-columns: minmax(0, 1fr); }
+    .app.presentation .sidebar, .app.presentation .right-panel { display: none; }
+    .element-table { width: 100%; border-collapse: collapse; font-size: 10px; background: #fff; }
+    .element-table th, .element-table td { border: 1px solid #cbd2e7; padding: 2px 4px; text-align: left; }
     .toast { position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 12px); opacity: 0; pointer-events: none; color: white; background: #292a2b; padding: 9px 13px; border-radius: 8px; transition: .18s; z-index: 10; max-width: 80vw; }
     .toast.show { opacity: 1; transform: translate(-50%, 0); }
     .modal-backdrop { position: fixed; inset: 0; background: #1116; display: none; place-items: center; z-index: 20; }
@@ -103,7 +107,7 @@
         <div class="title-wrap"><div class="title" id="canvasTitle">Conductor Canvas</div><div class="subtitle" id="canvasSubtitle">插件 Mini App</div></div>
         <button class="btn" id="undo" title="撤销">↶</button><button class="btn" id="redo" title="重做">↷</button><button class="btn" id="importCanvas">导入</button><button class="btn" id="exportCanvas">导出</button><button class="btn" id="renameCanvas">重命名</button><button class="btn" id="deleteCanvas">删除画布</button><button class="btn" id="refresh">↻ 刷新</button><input id="importFile" type="file" accept="application/json,.json" hidden /><span class="divider"></span>
         <select class="tool-select" id="addKind" title="添加元素"><option value="shape">便笺</option><option value="text">文本</option><option value="document">文档</option><option value="table">表格</option><option value="link">链接</option><option value="image">图片</option><option value="file">文件</option></select>
-        <button class="btn" id="autoLayout">自动排布</button><button class="btn" id="connectElements">连接所选</button><button class="btn" id="groupElements">组合</button><button class="btn primary" id="addElement">＋ 添加</button>
+        <button class="btn" id="autoLayout">自动排布</button><button class="btn" id="connectElements">连接所选</button><button class="btn" id="groupElements">组合</button><button class="btn primary" id="addElement">＋ 添加</button><button class="btn" id="presentation">演示</button>
         <span class="divider"></span><button class="btn" id="zoomOut">−</button><button class="btn" id="zoomIn">＋</button>
       </header>
       <section class="board-wrap" id="boardWrap"><div class="board" id="board"><div class="board-grid"></div><div class="empty" id="emptyState">连接插件服务以打开 Conductor 画布</div></div></section>
@@ -210,7 +214,7 @@
       Array.prototype.slice.call(board.querySelectorAll(".element,.empty,.connectors,.group-frame")).forEach(function (node) { node.remove(); });
       var elements = state.snapshot && Array.isArray(state.snapshot.elements) ? state.snapshot.elements : [];
       var byId = new Map(elements.map(function (item) { return [item.id, item]; }));
-      if (!state.bound || !state.current) { var hint = document.createElement("div"); hint.className = "empty"; hint.textContent = "连接当前运行以打开 Conductor 画布"; board.appendChild(hint); return; }
+      if (!state.bound || !state.current) { var hint = document.createElement("div"); hint.className = "empty"; hint.textContent = "连接插件服务以打开 Conductor 画布"; board.appendChild(hint); return; }
       if (!elements.length) { var empty = document.createElement("div"); empty.className = "empty"; empty.textContent = "画布还是空的。点击“添加”开始构建。"; board.appendChild(empty); }
       elements.filter(function (item) { return item.type === "group"; }).forEach(function (group) {
         var members = (group.config && group.config.memberIds || []).map(function (id) { return byId.get(id); }).filter(Boolean); if (!members.length) return;
@@ -240,6 +244,17 @@
         var title = document.createElement("div"); title.className = "element-title"; title.textContent = config.title || config.fileName || (kind === "shape" ? "便笺" : kind);
         var preview = document.createElement("div"); preview.className = "element-preview"; preview.textContent = textFromConfig(config);
         node.append(title, preview);
+        if (kind === "table" && Array.isArray(config.headers)) {
+          preview.remove();
+          var table = document.createElement("table"); table.className = "element-table";
+          var thead = document.createElement("thead"); var headerRow = document.createElement("tr");
+          config.headers.forEach(function (value) { var cell = document.createElement("th"); cell.textContent = String(value); headerRow.appendChild(cell); });
+          thead.appendChild(headerRow); table.appendChild(thead);
+          var tbody = document.createElement("tbody");
+          (Array.isArray(config.rows) ? config.rows : []).slice(0, 20).forEach(function (row) {
+            var tr = document.createElement("tr"); (Array.isArray(row) ? row : []).forEach(function (value) { var cell = document.createElement("td"); cell.textContent = String(value); tr.appendChild(cell); }); tbody.appendChild(tr);
+          }); table.appendChild(tbody); node.appendChild(table);
+        }
         if (kind === "image" && typeof config.url === "string" && /^https?:\/\//i.test(config.url)) { var image = document.createElement("img"); image.src = config.url; image.alt = config.fileName || "Canvas image"; image.style.maxWidth = "100%"; image.style.maxHeight = "78%"; image.style.objectFit = "contain"; image.referrerPolicy = "no-referrer"; node.appendChild(image); }
         if (state.selected && state.selected.id === element.id) { var handle = document.createElement("span"); handle.className = "resize-handle"; node.appendChild(handle); }
         node.addEventListener("click", function (event) { event.stopPropagation(); if (event.ctrlKey || event.metaKey || event.shiftKey) { state.selectedIds = state.selectedIds.includes(element.id) ? state.selectedIds.filter(function (id) { return id !== element.id; }) : state.selectedIds.concat(element.id); state.selected = element; } else { state.selected = element; state.selectedIds = [element.id]; } renderBoard(); renderInspector(); });
@@ -284,12 +299,19 @@
       }
       var config = element.config || {}; var position = element.position || {};
       function field(label, value, type, change) { var wrap = document.createElement("div"); wrap.className = "field"; var l = document.createElement("label"); l.textContent = label; var input = type === "textarea" ? document.createElement("textarea") : document.createElement("input"); if (type !== "textarea") input.type = type || "text"; input.value = value == null ? "" : value; input.addEventListener("change", function () { change(input.value); }); wrap.append(l, input); root.appendChild(wrap); }
-      var kind = String(element.elementKind || "").split("/").pop();
+      var kind = String(element.type || element.elementKind || "").split("/").pop();
       var intro = document.createElement("div"); intro.className = "muted"; intro.textContent = kind + " · " + element.id; intro.style.marginBottom = "14px"; root.appendChild(intro);
       if (config.title !== undefined || kind === "group") field("标题", config.title || config.name || "", "text", function (value) { patchContent(kind === "group" ? { name: value } : { title: value }); });
       var contentKey = config.markdown !== undefined ? "markdown" : config.text !== undefined || ["text", "shape", "sticky"].includes(kind) ? "text" : null;
       if (contentKey) field("内容", config[contentKey], "textarea", function (value) { var patch = {}; patch[contentKey] = value; patchContent(patch); });
       if (config.url !== undefined || kind === "link") field("链接", config.url || "", "url", function (value) { patchContent({ url: value }); });
+      if (kind === "table") {
+        field("列名（逗号分隔）", (config.headers || []).join(", "), "text", function (value) { patchContent({ headers: value.split(",").map(function (item) { return item.trim(); }) }); });
+        field("行数据（JSON 数组）", JSON.stringify(config.rows || [], null, 2), "textarea", function (value) {
+          try { var rows = JSON.parse(value); if (!Array.isArray(rows) || !rows.every(Array.isArray)) throw new Error("行数据须为二维数组"); patchContent({ rows: rows }); }
+          catch (error) { toast(String(error.message || error)); }
+        });
+      }
       var coords = document.createElement("div"); coords.className = "field"; var label = document.createElement("label"); label.textContent = "位置与尺寸 · 网格单位"; var box = document.createElement("div"); box.className = "coords";
       ["x", "y", "w", "h"].forEach(function (key) { var input = document.createElement("input"); input.type = "number"; input.title = key; input.value = Number(position[key]) || (key === "w" ? 4 : key === "h" ? 3 : 0); input.addEventListener("change", function () { updatePosition(key, Number(input.value)); }); box.appendChild(input); }); coords.append(label, box); root.appendChild(coords);
       var colorWrap = document.createElement("div"); colorWrap.className = "field"; var colorLabel = document.createElement("label"); colorLabel.textContent = "颜色"; var swatches = document.createElement("div"); swatches.className = "swatches";
@@ -352,6 +374,7 @@
     $("connectElements").addEventListener("click", connectSelected);
     $("groupElements").addEventListener("click", groupSelected);
     $("autoLayout").addEventListener("click", autoLayout);
+    $("presentation").addEventListener("click", function () { var active = document.querySelector(".app").classList.toggle("presentation"); $("presentation").classList.toggle("primary", active); $("presentation").textContent = active ? "退出演示" : "演示"; });
     $("zoomIn").addEventListener("click", function () { state.zoom = Math.min(1.5, state.zoom + .1); renderBoard(); });
     $("zoomOut").addEventListener("click", function () { state.zoom = Math.max(.6, state.zoom - .1); renderBoard(); });
     $("board").addEventListener("click", function (event) { if (event.target === board || event.target.classList.contains("board-grid")) { state.selected = null; state.selectedIds = []; renderBoard(); renderInspector(); } });

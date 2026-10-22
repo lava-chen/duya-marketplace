@@ -20,6 +20,7 @@ elements; dragging and resizing elements; editing content, coordinates, and
 colors; searching the library; refreshing; and zooming the board. Mini App
 operations use only the MCP tools declared by this plugin and the normal DUYA
 Plugin App `bind` / `invoke` protocol.
+The editor also renders and edits table cells and provides a presentation view.
 
 ## MCP tools
 
