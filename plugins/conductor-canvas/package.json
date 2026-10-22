@@ -6,6 +6,7 @@
     "build": "vite build",
     "dev": "vite --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.*",
     "test:bridge": "node --test test/plugin-bridge.test.mjs"
   },
   "dependencies": {

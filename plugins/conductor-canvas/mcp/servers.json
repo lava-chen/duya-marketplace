@@ -13,6 +13,15 @@
       "envPassthrough": "allowlist",
       "startupTimeoutSec": 15,
       "toolTimeoutSec": 30
+    },
+    {
+      "name": "conductor_canvas_snapshot",
+      "command": "node",
+      "args": ["${DUYA_PLUGIN_ROOT}/link-snapshot-server.cjs"],
+      "env": { "DUYA_CANVAS_STORE": "${DUYA_PLUGIN_DATA}/canvases.json" },
+      "envPassthrough": "allowlist",
+      "startupTimeoutSec": 15,
+      "toolTimeoutSec": 60
     }
   ]
 }

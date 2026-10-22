@@ -49,6 +49,7 @@
               { "serverName": "conductor_canvas", "toolName": "canvas_import_bundle" },
               { "serverName": "conductor_canvas", "toolName": "canvas_asset_put" },
               { "serverName": "conductor_canvas", "toolName": "canvas_asset_get" },
+              { "serverName": "conductor_canvas_snapshot", "toolName": "canvas_link_snapshot" },
               { "serverName": "conductor_canvas", "toolName": "canvas_list_elements" },
               { "serverName": "conductor_canvas", "toolName": "canvas_create_element" },
               { "serverName": "conductor_canvas", "toolName": "canvas_connect_elements" },

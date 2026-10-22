@@ -15,9 +15,17 @@ The `canvas` Mini App provides a canvas library and a freeform editor. It
 supports creating, selecting, renaming, and deleting canvases; adding native
 elements; dragging and resizing elements; editing content, coordinates, and
 colors; searching the library; refreshing; and zooming the board. Mini App
-operations use only the MCP tools declared by this plugin and the plugin App
-`bind` / `invoke` protocol. The editor also supports table cells, presentation,
-and local image/file uploads.
+operations use only the MCP tools declared by this plugin and the normal DUYA
+Plugin App `bind` / `invoke` protocol.
+The editor also renders and edits table cells, provides a presentation view,
+and uploads local image/file assets into the plugin data directory.
+URL links can be captured as desktop or mobile head and full-page snapshots.
+The `canvas_link_snapshot` tool launches the Canvas plugin's isolated managed
+Chromium profile, stores the JPEG in the Canvas asset directory, and closes the
+temporary tab. Chrome or Chromium is optional; when it is not on PATH, set
+`CHROME_BIN` or `DUYA_BROWSER_EXECUTABLE` for the Canvas plugin runtime. The
+managed Chromium transport is vendored in this plugin so Canvas remains
+independently installable.
 
 ## MCP tools
 

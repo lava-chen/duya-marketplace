@@ -288,8 +288,8 @@ export const LinkElement: React.FC<{ element: CanvasElement }> = ({ element }) =
             <img className="canvas-link__snapshot-image" src={config.snapshotUrl} alt={title} />
           ) : (
             <div className="canvas-link__snapshot-placeholder">
-              <span className="canvas-link__snapshot-spinner" />
-              <span>Loading snapshot…</span>
+              {capturing && <span className="canvas-link__snapshot-spinner" />}
+              <span>{capturing ? "Loading snapshot…" : "Choose a mode to capture this page."}</span>
             </div>
           )}
           {capturing && (
@@ -338,6 +338,7 @@ export const LinkElement: React.FC<{ element: CanvasElement }> = ({ element }) =
           {config.faviconUrl ? <img className="canvas-link__favicon" src={config.faviconUrl} alt="" /> : <span className="canvas-link__mark canvas-link__mark--url">↗</span>}
         </button>
         <button type="button" className="canvas-link__title" onClick={open}>{title}</button>
+        {captureError && <div className="canvas-link__snapshot-error" role="alert">{captureError}</div>}
         {menuOpen && (
           <SnapshotModeMenu
             currentMode={config.snapshotMode}

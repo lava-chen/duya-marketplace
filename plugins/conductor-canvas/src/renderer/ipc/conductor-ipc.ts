@@ -123,7 +123,17 @@ export async function getAssetUrl(assetId: string): Promise<string> {
   return `data:${result.mimeType};base64,${result.base64}`;
 }
 export async function captureLinkSnapshot(_canvasId: string, _elementId: string, _url: string, _mode: Exclude<LinkSnapshotMode, "none">): Promise<{ assetId: string; url: string; width: number; height: number }> {
-  throw new Error("Link snapshot capture requires a host browser capability that is not available in standalone Apps.");
+  const result = await pluginBridge.call<{ assetId: string; mimeType: string; width: number; height: number; base64: string }>(
+    "canvas_link_snapshot",
+    { url: _url, mode: _mode },
+  );
+  if (!result?.assetId || !result.base64) throw new Error("The Canvas snapshot service returned an incomplete image.");
+  return {
+    assetId: result.assetId,
+    url: `data:${result.mimeType || "image/jpeg"};base64,${result.base64}`,
+    width: result.width,
+    height: result.height,
+  };
 }
 export async function widgetAction(request: { canvasId: string; elementId: string; action: { kind: "refresh"; sourceId?: string } }): Promise<unknown> {
   return executeAction({ action: "widget.action", canvasId: request.canvasId, elementId: request.elementId, widgetAction: request.action } as any);
