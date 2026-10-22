@@ -1,8 +1,17 @@
 # Conductor Canvas
 
-Conductor Canvas is a standalone DUYA marketplace plugin. The plugin package
-owns the canvas model, persistence, MCP tool set, and Mini App; it does not
+Conductor Canvas is a DUYA marketplace plugin prototype. This package owns
+its current canvas model, persistence, MCP tool set, and Mini App. It does not
 import or call DUYA's built-in Conductor implementation.
+
+**Migration status:** This is a smaller, independent editor, not a complete
+replacement for the built-in Canvas. DUYA still contains the original Canvas
+UI, database, and tool execution code. The current Plugin App host requires an
+active chat run to bind MCP tools and expires that binding after five minutes;
+the editor therefore cannot yet operate as a long-lived standalone App. The
+host also lacks a complete App update/reload and capability grant UI flow.
+Installing this plugin does not migrate existing Canvas data or disable the
+built-in Canvas. See [migration boundary](MIGRATION.md).
 
 ## Mini App
 
@@ -36,6 +45,6 @@ Canvas data is stored in the plugin's `${DUYA_PLUGIN_DATA}/canvases.json` file.
 The server writes atomically and keeps the file private to the current user.
 The Mini App and agent share the same MCP service and data store.
 
-This is the migrated plugin-owned Canvas workspace. Import of existing
-DUYA-native canvases is a separate migration step; the plugin does not read or
-modify DUYA's private Conductor database.
+The plugin does not read or modify DUYA's private Conductor database.
+Portable JSON import is available, but migration of existing canvases still
+requires a supported export path and feature parity review.
