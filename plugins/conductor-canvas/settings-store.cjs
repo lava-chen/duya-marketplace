@@ -51,6 +51,7 @@ function createSettingsStore(dataRoot, env = process.env) {
     if (Buffer.byteLength(serialized) > MAX_SETTINGS_BYTES) fail('Canvas settings are limited to 1 MB.');
     const temp = `${settingsPath}.${process.pid}.${crypto.randomUUID()}.tmp`;
     fs.writeFileSync(temp, serialized, { mode: 0o600, flag: 'wx' });
+    fs.chmodSync(temp, 0o600);
     fs.renameSync(temp, settingsPath);
   }
 

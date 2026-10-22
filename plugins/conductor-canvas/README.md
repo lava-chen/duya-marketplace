@@ -73,8 +73,10 @@ node plugins/conductor-canvas/legacy-export.cjs /path/to/duya-main.db /path/to/c
 
 Then use **Import** in the Canvas App to select `canvases.json`. The exporter
 opens the SQLite database read only, includes live WAL content, and refuses to
-overwrite an existing output file. The importer preserves original element
-fields and connector endpoint objects, remaps bundled assets into plugin
-storage, and retains widgets and action history. Former dynamic widget code is
-retained as data and is not executed. Keep the source database and asset
-directory until the migrated copy has been reviewed.
+overwrite an existing output file. For each canvas project path it also
+exports the project database rows from `.duya/database.sqlite`. The importer
+preserves source, property, record, and view IDs and the canvas project link,
+preserves original element fields and connector endpoint objects, remaps
+bundled assets into plugin storage, and retains widgets and action history.
+Former dynamic widget code is retained as data and is not executed. Keep the
+source databases and asset directory until the migrated copy has been reviewed.

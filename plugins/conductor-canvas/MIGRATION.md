@@ -10,11 +10,15 @@ dependency on DUYA's former Conductor implementation.
 
 Migration is explicit and copy-based. `legacy-export.cjs` opens the former
 SQLite database read only, includes WAL content, and emits canvases, groups,
-elements, widgets, action history, and optionally referenced asset files. The
-plugin importer retains original v2 fields and connector endpoints while
-remapping imported asset references into its own storage. Dynamic widget code
-is retained as data and is never executed by the importer. Installation does
-not silently read, change, or delete the former database or its asset files.
+elements, widgets, action history, and optionally referenced asset files. For
+each referenced project path it also reads `.duya/database.sqlite` and exports
+the source, property, option, record, value, view, and related rows. The plugin
+imports those rows into its own per-project store while retaining IDs and the
+canvas-to-project link. It retains original v2 fields and connector endpoints
+while remapping imported asset references into its own storage. Dynamic widget
+code is retained as data and is never executed by the importer. Installation
+does not silently read, change, or delete the former database or its asset
+files.
 
 ## Remaining parity work
 

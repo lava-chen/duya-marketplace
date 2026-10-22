@@ -75,9 +75,9 @@ function createRefineProvider({ settings, fetchImpl = globalThis.fetch, timeoutM
         signal: controller.signal,
       });
       if (!response.ok) {
-        let detail = '';
-        try { detail = String(await response.text()).slice(0, 300); } catch { /* no response body */ }
-        fail(`OpenAI-compatible provider returned HTTP ${response.status}${detail ? `: ${detail}` : ''}`);
+        // Provider error bodies are untrusted and may echo credentials or
+        // request headers. Report only the status code to MCP callers.
+        fail(`OpenAI-compatible provider returned HTTP ${response.status}.`);
       }
       const raw = await response.text();
       if (Buffer.byteLength(raw) > MAX_RESPONSE_BYTES) fail('Provider response is larger than 2 MB.');

@@ -5,6 +5,7 @@
 // separately from the plugin service and import the resulting JSON in the App.
 const fs = require('node:fs');
 const { DatabaseSync } = require('node:sqlite');
+const path = require('node:path');
 
 const databasePath = process.argv[2];
 const outputPath = process.argv[3];
@@ -29,7 +30,6 @@ const mimeFor = (fileName) => ({
 }[require('node:path').extname(fileName).toLowerCase()] || 'application/octet-stream');
 const MAX_IMPORTED_ASSET_BYTES = 5 * 1024 * 1024;
 const MAX_BUNDLE_ASSET_BYTES = 35 * 1024 * 1024;
-const path = require('node:path');
 const hasTable = (name) => Boolean(database.prepare('SELECT 1 FROM sqlite_master WHERE type = ? AND name = ?').get('table', name));
 const rows = (name, canvasId) => hasTable(name)
   ? database.prepare(`SELECT * FROM ${name} WHERE canvas_id = ?`).all(canvasId)
@@ -45,7 +45,8 @@ try {
     })) : [];
   let assetBytes = 0;
   const assets = [];
-  const canvases = database.prepare('SELECT * FROM conductor_canvases ORDER BY sort_order, created_at').all().map((row) => {
+  const canvasRows = database.prepare('SELECT * FROM conductor_canvases ORDER BY sort_order, created_at').all();
+  const canvases = canvasRows.map((row) => {
     const widgets = rows('conductor_widgets', row.id).map((widget) => ({
       id: widget.id, canvasId: widget.canvas_id, kind: widget.kind, type: widget.type,
       position: parse(widget.position, {}), config: parse(widget.config, {}),
@@ -100,8 +101,31 @@ try {
         mergedFrom: action.merged_from, undoneAt: action.undone_at })),
     };
   });
+  // Project databases live beside each project, separately from DUYA's main
+  // database. Export their rows explicitly so database elements retain their
+  // source/view IDs when the bundle is imported by the standalone plugin.
+  const projectDatabases = [];
+  const seenProjectPaths = new Set();
+  for (const row of canvasRows) {
+    const projectPath = row.project_path;
+    if (typeof projectPath !== 'string' || !projectPath || seenProjectPaths.has(projectPath)) continue;
+    seenProjectPaths.add(projectPath);
+    const projectDbPath = path.join(projectPath, '.duya', 'database.sqlite');
+    if (!fs.existsSync(projectDbPath)) continue;
+    const projectDb = new DatabaseSync(projectDbPath, { readOnly: true });
+    try {
+      projectDb.exec('PRAGMA query_only = ON; BEGIN');
+      const tableExists = (table) => Boolean(projectDb.prepare('SELECT 1 FROM sqlite_master WHERE type = ? AND name = ?').get('table', table));
+      const read = (table) => tableExists(table) ? projectDb.prepare(`SELECT * FROM ${table}`).all() : [];
+      projectDatabases.push({ projectPath, sources: read('db_sources'), properties: read('db_properties'), options: read('db_property_options'), records: read('db_records'), values: read('db_values'), valueRefs: read('db_value_refs'), views: read('db_views'), viewRecordPositions: read('db_view_record_positions'), relationEdges: read('db_relation_edges'), events: read('db_events') });
+      projectDb.exec('COMMIT');
+    } catch (error) {
+      try { projectDb.exec('ROLLBACK'); } catch { /* no active transaction */ }
+      throw error;
+    } finally { projectDb.close(); }
+  }
   database.exec('COMMIT');
-  fs.writeFileSync(outputPath, JSON.stringify({ format: 'duya.conductor-legacy-bundle', version: 1, groups, canvases, assets }, null, 2), { flag: 'wx', mode: 0o600 });
+  fs.writeFileSync(outputPath, JSON.stringify({ format: 'duya.conductor-legacy-bundle', version: 1, groups, canvases, assets, projectDatabases }, null, 2), { flag: 'wx', mode: 0o600 });
   process.stderr.write(`Exported ${canvases.length} canvases and ${assets.length} assets to ${outputPath}\n`);
 } catch (error) {
   try { database.exec('ROLLBACK'); } catch { /* no active transaction */ }

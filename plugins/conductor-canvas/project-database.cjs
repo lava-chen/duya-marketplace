@@ -341,7 +341,77 @@ function createProjectDatabase(options = {}) {
       return result;
     } finally { try { fs.closeSync(fd); } finally { try { fs.unlinkSync(lock); } catch (error) { if (error.code !== 'ENOENT') throw error; } } }
   }
-  return { invoke };
+  async function importLegacy(projectPath, dataset) {
+    assertString(projectPath, 'projectPath'); assertObject(dataset, 'legacy project database');
+    const allowed = new Set(['projectPath', 'sources', 'properties', 'options', 'records', 'values', 'valueRefs', 'views', 'viewRecordPositions', 'relationEdges', 'events']);
+    assertKeys(dataset, allowed, 'legacy project database');
+    for (const key of ['sources', 'properties', 'options', 'records', 'values', 'valueRefs', 'views', 'viewRecordPositions', 'relationEdges', 'events']) {
+      if (dataset[key] !== undefined && (!Array.isArray(dataset[key]) || dataset[key].length > 100000)) fail(`legacy ${key} must be an array with at most 100,000 rows.`);
+      if (Array.isArray(dataset[key]) && dataset[key].some((row) => !isObject(row))) fail(`legacy ${key} rows must be objects.`);
+    }
+    if (JSON.stringify(dataset).length > 40_000_000) fail('Legacy project database is limited to 40 MB.');
+    const file = fileFor(projectPath); const lock = `${file}.lock`;
+    fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+    const fd = await acquireLock(lock);
+    try {
+      let store;
+      try { store = JSON.parse(fs.readFileSync(file, 'utf8')); }
+      catch (error) { if (error.code === 'ENOENT') store = defaultStore(); else throw error; }
+      const rows = (key) => dataset[key] || [];
+      const parsed = (value, fallback) => { if (typeof value !== 'string') return value ?? fallback; try { return JSON.parse(value); } catch { return fallback; } };
+      const replace = (list, incoming) => {
+        const ids = new Set(incoming.map((row) => row.id).filter((id) => typeof id === 'string'));
+        return [...list.filter((row) => !ids.has(row.id)), ...incoming];
+      };
+      const timestamp = (value) => Number.isFinite(value) ? value : 0;
+      const mappedSources = rows('sources').map((row) => ({
+        ...row, id: row.id, name: String(row.name || 'Untitled source'), description: row.description ?? null,
+        icon: parsed(row.icon_json, null), createdAt: timestamp(row.created_at), updatedAt: timestamp(row.updated_at), archivedAt: row.archived_at ?? null,
+        legacy: { ...row },
+      }));
+      const mappedProperties = rows('properties').map((row) => {
+        const type = PROPERTY_TYPES.has(row.type) ? row.type : 'text';
+        return { ...row, id: row.id, sourceId: row.source_id, name: String(row.name || 'Property'), type,
+          config: parsed(row.config_json, { type }), position: String(row.position || ''), createdAt: timestamp(row.created_at),
+          updatedAt: timestamp(row.updated_at), archivedAt: row.archived_at ?? null, legacy: { ...row, originalType: row.type } };
+      });
+      const mappedOptions = rows('options').map((row) => ({ ...row, id: row.id, propertyId: row.property_id, name: String(row.name || ''),
+        color: row.color ?? null, groupId: row.group_id ?? null, position: String(row.position || ''), archivedAt: row.archived_at ?? null }));
+      const mappedRecords = rows('records').map((row) => ({ ...row, id: row.id, sourceId: row.source_id, title: String(row.title_plain || ''),
+        revision: Number.isSafeInteger(row.revision) && row.revision > 0 ? row.revision : 1, createdAt: timestamp(row.created_at),
+        updatedAt: timestamp(row.updated_at), archivedAt: row.archived_at ?? null,
+        legacy: { titleRich: parsed(row.title_rich_json, null), bodyPath: row.body_path ?? null, bodyHash: row.body_hash ?? null,
+          icon: parsed(row.icon_json, null), cover: parsed(row.cover_json, null), ...row } }));
+      const mappedValues = rows('values').map((row) => {
+        let value = null;
+        switch (row.value_type) {
+          case 'text': case 'url': value = row.text_value ?? ''; break;
+          case 'number': value = row.number_value; break;
+          case 'checkbox': value = row.boolean_value === 1; break;
+          case 'select': case 'status': value = row.reference_value; break;
+          case 'multi_select': value = parsed(row.json_value, []); break;
+          case 'date': value = row.date_start ? { start: row.date_start, end: row.date_end ?? null, timezone: row.date_timezone ?? null } : null; break;
+        }
+        return { recordId: row.record_id, propertyId: row.property_id, value, legacy: { ...row } };
+      });
+      const mappedViews = rows('views').map((row) => ({ ...row, id: row.id, sourceId: row.source_id, name: String(row.name || 'View'), type: row.type || 'table',
+        filter: parsed(row.filter_json, null), sorts: parsed(row.sort_json, []), layout: parsed(row.layout_json, {}),
+        createdAt: timestamp(row.created_at), updatedAt: timestamp(row.updated_at), archivedAt: row.archived_at ?? null,
+        legacy: { quickFilters: parsed(row.quick_filters_json, null), ...row } }));
+      store.sources = replace(store.sources, mappedSources);
+      store.properties = replace(store.properties, mappedProperties);
+      store.options = replace(store.options, mappedOptions);
+      store.records = replace(store.records, mappedRecords);
+      const importedRecordIds = new Set(mappedRecords.map((record) => record.id));
+      store.values = [...store.values.filter((value) => !importedRecordIds.has(value.recordId)), ...mappedValues];
+      store.views = replace(store.views, mappedViews);
+      store.legacyProjectDatabase = { valueRefs: rows('valueRefs'), viewRecordPositions: rows('viewRecordPositions'), relationEdges: rows('relationEdges'), events: rows('events') };
+      const temp = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`;
+      fs.writeFileSync(temp, JSON.stringify(store), { mode: 0o600 }); fs.renameSync(temp, file);
+      return { importedSources: mappedSources.length, importedRecords: mappedRecords.length, importedViews: mappedViews.length };
+    } finally { try { fs.closeSync(fd); } finally { try { fs.unlinkSync(lock); } catch (error) { if (error.code !== 'ENOENT') throw error; } } }
+  }
+  return { invoke, importLegacy };
 }
 
 module.exports = { createProjectDatabase, ProjectDatabaseError, validateCommand };

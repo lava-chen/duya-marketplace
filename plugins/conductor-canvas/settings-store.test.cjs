@@ -24,6 +24,7 @@ test('settings persist across MCP instances and serialize concurrent updates', a
   assert.equal(await reopened.get('conductor.model'), '[Local] model-a');
   assert.equal(await reopened.get('conductor.permissionMode'), 'auto');
   await assert.rejects(reopened.set('provider.secretAPIkey', 'must-not-be-a-setting'), /provider configuration tool/);
+  assert.equal(fs.statSync(path.join(dataRoot, 'settings.json')).mode & 0o777, 0o600);
 });
 
 test('provider status and model listing never disclose the API key', async (t) => {

@@ -198,7 +198,7 @@ function importedCanvas(snapshotInput, name, groupIds = new Map()) {
   const canvas = {
     id: importedId, name: String(name || sourceCanvas.name || 'Imported canvas').trim().slice(0, 100),
     description: String(sourceCanvas.description || ''), layoutConfig: sourceCanvas.layoutConfig || {},
-    sortOrder: Number(sourceCanvas.sortOrder) || 0, projectPath: null,
+    sortOrder: Number(sourceCanvas.sortOrder) || 0, projectPath: typeof sourceCanvas.projectPath === 'string' ? sourceCanvas.projectPath : null,
     createdAt: sourceCanvas.createdAt || createdAt, updatedAt: sourceCanvas.updatedAt || createdAt, actionCursor: Number(source.actionCursor) || 0,
     isFavorite: sourceCanvas.isFavorite === true,
     tags: Array.isArray(sourceCanvas.tags) ? sourceCanvas.tags.filter((item) => typeof item === 'string').slice(0, 20) : [],
@@ -566,6 +566,13 @@ async function callUnlocked(name, input) {
     if (JSON.stringify(bundle).length > 50_000_000) fail('Bundle import is limited to 50 MB.');
     const bundleAssets = validateBundleAssets(bundle.assets);
     const assetIds = storeBundleAssets(bundleAssets);
+    const projectDatabases = Array.isArray(bundle.projectDatabases) ? bundle.projectDatabases : [];
+    if (projectDatabases.length > 500) fail('A bundle may include at most 500 project databases.');
+    const importedProjectDatabases = [];
+    for (const projectDb of projectDatabases) {
+      if (!projectDb || typeof projectDb.projectPath !== 'string') fail('Invalid legacy project database entry.');
+      importedProjectDatabases.push(await projectDatabase.importLegacy(projectDb.projectPath, projectDb));
+    }
     const groupIds = new Map();
     const groups = Array.isArray(bundle.groups) ? bundle.groups : [];
     for (const group of groups) {
@@ -582,7 +589,7 @@ async function callUnlocked(name, input) {
     store.canvases.unshift(...canvases);
     if (canvases.length) store.currentCanvasId = canvases[0].id;
     writeStore(store);
-    result = { importedCanvases: canvases.length, importedElements: canvases.reduce((sum, canvas) => sum + canvas.elements.length, 0), importedAssets: assetIds.size, currentCanvasId: store.currentCanvasId };
+    result = { importedCanvases: canvases.length, importedElements: canvases.reduce((sum, canvas) => sum + canvas.elements.length, 0), importedAssets: assetIds.size, importedProjectDatabases: importedProjectDatabases.length, currentCanvasId: store.currentCanvasId };
   } else {
     const canvas = canvasById(store, input.canvasId);
     const beforeElements = JSON.parse(JSON.stringify(canvas.elements));

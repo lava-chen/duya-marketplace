@@ -36,6 +36,16 @@ test('refine rejects missing setup, invalid payloads, and malformed provider out
   await assert.rejects(malformed(input), /invalid JSON for widget data/);
 });
 
+test('refine never returns provider error bodies that could echo credentials', async () => {
+  const settings = { getProviderConfig: async () => ({ baseURL: 'https://provider.example/v1', model: 'test', secretAPIkey: 'secret-test-key' }) };
+  const refine = createRefineProvider({ settings, fetchImpl: async () => ({ ok: false, status: 401, text: async () => 'invalid api key secret-test-key' }) });
+  await assert.rejects(() => refine({ sessionId: 's', userRequest: 'change', widgetType: 'chart', currentData: {}, iteration: 1, maxIterations: 2, screenshotBase64: '' }), (error) => {
+    assert.match(error.message, /HTTP 401/);
+    assert.doesNotMatch(error.message, /secret-test-key|invalid api key/i);
+    return true;
+  });
+});
+
 test('chat completion endpoint accepts base, v1, and full endpoint URLs', () => {
   assert.equal(endpointFor('https://api.example.test'), 'https://api.example.test/v1/chat/completions');
   assert.equal(endpointFor('https://api.example.test/v1/'), 'https://api.example.test/v1/chat/completions');

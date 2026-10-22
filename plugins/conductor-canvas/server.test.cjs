@@ -150,6 +150,34 @@ test('project database command contract is available through the plugin MCP serv
   assert.equal(queried.records[0].record.id, record.record.id);
 });
 
+test('legacy bundle imports project database rows under the original project path and IDs', async (t) => {
+  const mcp = startServer(t);
+  const projectPath = '/legacy/project-with-data';
+  const imported = await mcp.call('canvas_import_bundle', { bundle: {
+    format: 'duya.conductor-legacy-bundle', version: 1, groups: [], assets: [],
+    canvases: [{ canvas: { id: 'old-canvas', name: 'Data view', projectPath }, elements: [
+      { id: 'database-element', elementKind: 'native/database', type: 'database', position: { x: 0, y: 0, w: 10, h: 6 }, config: { sourceId: 'source-1', viewId: 'view-1' } },
+    ], widgets: [], actions: [] }],
+    projectDatabases: [{ projectPath,
+      sources: [{ id: 'source-1', name: 'Customers', description: 'Migrated', icon_json: null, created_at: 1, updated_at: 2, archived_at: null }],
+      properties: [{ id: 'title-1', source_id: 'source-1', name: 'Name', type: 'title', config_json: '{"type":"title"}', position: '000000001024', created_at: 1, updated_at: 1, archived_at: null }],
+      options: [], records: [{ id: 'record-1', source_id: 'source-1', title_plain: 'Ada', title_rich_json: null, revision: 3, created_at: 2, updated_at: 3, archived_at: null }],
+      values: [], views: [{ id: 'view-1', source_id: 'source-1', name: 'All customers', type: 'table', filter_json: null, sort_json: '[]', quick_filters_json: '[]', layout_json: '{"visiblePropertyIds":["title-1"]}', created_at: 1, updated_at: 2, archived_at: null }],
+      valueRefs: [], viewRecordPositions: [], relationEdges: [], events: [],
+    }],
+  } });
+  assert.equal(imported.importedProjectDatabases, 1);
+  const canvas = await mcp.call('canvas_get_snapshot', { canvasId: imported.currentCanvasId });
+  assert.equal(canvas.canvas.projectPath, projectPath);
+  const source = await mcp.call('canvas_project_database', { request: { projectPath, command: { type: 'source.get', sourceId: 'source-1' } } });
+  assert.equal(source.source.id, 'source-1');
+  assert.equal(source.properties[0].id, 'title-1');
+  assert.equal(source.views[0].id, 'view-1');
+  const query = await mcp.call('canvas_project_database', { request: { projectPath, command: { type: 'query', sourceId: 'source-1', viewId: 'view-1' } } });
+  assert.equal(query.records[0].record.id, 'record-1');
+  assert.equal(query.records[0].record.title, 'Ada');
+});
+
 test('standalone App capability allowlist covers every MCP tool', async (t) => {
   const mcp = startServer(t);
   const listed = await mcp.request('tools/list');
