@@ -1,0 +1,13 @@
+{
+  "servers": [
+    {
+      "name": "conductor_canvas",
+      "command": "node",
+      "args": ["${DUYA_PLUGIN_ROOT}/server.cjs"],
+      "env": { "DUYA_CANVAS_STORE": "${DUYA_PLUGIN_DATA}/canvases.json" },
+      "envPassthrough": "allowlist",
+      "startupTimeoutSec": 15,
+      "toolTimeoutSec": 30
+    }
+  ]
+}

@@ -3,11 +3,17 @@
   "writeActionsRequireApproval": true,
   "destructiveActionsRequireApproval": true,
   "permissions": [
-    { "name": "conductor.canvas" }
+    { "name": "conductor.canvas.read" },
+    { "name": "conductor.canvas.write" },
+    { "name": "conductor.canvas.delete" }
   ],
+  "tiers": {
+    "read": ["canvas_manage", "canvas_group_list", "canvas_get_snapshot", "canvas_export", "canvas_list_elements", "canvas_find_empty_space", "canvas_auto_layout", "canvas_get_knowledge"],
+    "write": ["canvas_create", "canvas_rename", "canvas_group_create", "canvas_group_rename", "canvas_import", "canvas_update_metadata", "canvas_create_element", "canvas_connect_elements", "canvas_group_elements", "canvas_ungroup_elements", "canvas_move_element", "canvas_resize_element", "canvas_fill_content", "canvas_style_element", "canvas_apply_layout", "canvas_undo", "canvas_redo"],
+    "destructive": ["canvas_delete", "canvas_group_delete", "canvas_delete_element"]
+  },
   "notes": [
-    "Canvas App calls require a Host-managed Plugin App capability grant.",
-    "The Host reuses the existing Canvas tool schemas and executor path.",
-    "Per-action approval tiers are not yet mapped by DUYA's Plugin App host."
+    "The plugin owns its canvas JSON data under DUYA_PLUGIN_DATA.",
+    "Canvas deletion requires the destructive approval tier."
   ]
 }
