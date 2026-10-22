@@ -3,10 +3,14 @@
   "writeActionsRequireApproval": true,
   "destructiveActionsRequireApproval": true,
   "permissions": [
-    { "name": "computer-use.cua", "description": "Use DUYA's Host guarded computer CUA tool." }
+    { "name": "computer-use.cua", "description": "Use the configured native CUA MCP driver." }
   ],
+  "tiers": {
+    "read": ["get_guide", "check_permissions", "get_desktop_state", "get_window_state", "list_windows", "list_apps", "get_accessibility_tree", "get_screen_size", "verify_state"],
+    "write": ["click", "double_click", "right_click", "drag", "scroll", "type_text", "press_key", "hotkey", "set_value", "bring_to_front"]
+  },
   "notes": [
-    "The Host owns the executor; this plugin does not perform direct OS automation.",
-    "Plugin MCP approval and DUYA's existing Computer Use guard, approval, audit, and revoke checks apply."
+    "The plugin launches its configured Cua Driver MCP process directly.",
+    "DUYA plugin MCP approval applies. The old Computer Use Host guard does not apply to this independent MCP path."
   ]
 }

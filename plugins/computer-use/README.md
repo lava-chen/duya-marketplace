@@ -1,16 +1,34 @@
 # Computer Use
 
-This plugin requests DUYA's Host-owned `computer-use` capability. It contributes
-the plugin identity and usage instructions; DUYA supplies the MCP implementation.
-The Host routes calls through the existing `computer_cua` executor and its
-session-bound IPC path.
+The official DUYA marketplace plugin now discovers a native CUA MCP driver
+directly. It does not request DUYA's `computer-use` Host capability or route
+its tools through the built-in `computer_cua` executor. DUYA only installs the
+plugin, starts its scoped MCP process, and applies its standard tool
+approval and lifecycle rules.
 
-Each call is still attributed to this plugin and passes the regular plugin MCP
-approval gate. The CUA executor then applies DUYA's platform, system access,
-approval, audit, and revoke checks. This package does not ship an OS automation
-runtime and cannot inject arbitrary input directly.
+## Runtime setup
 
-Computer Use is available only when the Host advertises the capability on the
-current platform and the user grants the applicable DUYA permissions. The
-currently exported structured `computer_cua` implementation is Windows-only;
-other platform backends are not part of this migration slice yet.
+Install the open-source [Cua Driver](https://github.com/trycua/cua/tree/main/libs/cua-driver)
+for your desktop platform. In DUYA's plugin settings, set **Cua Driver
+executable path** to the installed `cua-driver` binary. The plugin runs
+`cua-driver mcp` over stdio through its own MCP adapter and asks the driver to
+use `standard` permission mode. The adapter exposes only a reviewed subset of
+desktop observation and input tools, excluding process termination, arbitrary
+scripts, browser control, and driver reconfiguration. Agent tools come from
+the live MCP tool catalog, so their names and schemas match the installed
+driver version. Read the driver's guide with
+`get_guide` and check the OS permissions with `check_permissions` before
+calling desktop actions. Observe current windows or desktop state before
+acting on a coordinate or UI element.
+
+The driver is a runtime dependency, not yet bundled with this plugin. A
+missing or incompatible binary leaves the MCP server unavailable. The former
+DUYA Computer Use implementation remains in the host during the migration;
+this package does not invoke it.
+
+## Migration status
+
+This is an independent MCP path, not yet a feature-complete replacement for
+DUYA's built-in Windows UIA, read-back, per-app guard, audit, and revoke
+flows. The installed desktop build and driver permission behavior still need
+platform-by-platform review before the old implementation can be removed.
