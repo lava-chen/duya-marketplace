@@ -88,3 +88,22 @@ preserves original element fields and connector endpoint objects, remaps
 bundled assets into plugin storage, and retains widgets and action history.
 Former dynamic widget code is retained as data and is not executed. Keep the
 source databases and asset directory until the migrated copy has been reviewed.
+
+Project database imports merge by stable row IDs or table keys, so importing
+the same bundle again updates matching rows without duplicating them and keeps
+rows from other imported projects. `bodyPath` is available on imported records.
+The query response also exposes source-scoped raw legacy value rows,
+`valueRefs`, `viewRecordPositions`, `relationEdges`, and events under
+`legacyProjectDatabase`; imported views retain `quickFilters` in
+`view.legacy.quickFilters`.
+
+These legacy fields are retained according to the desktop engine's current
+behavior. It has no `relation` property type or relation-edge query/write path;
+unknown property types remain surfaced as text with their original type under
+`property.legacy.originalType`, while raw relation edges stay available in the
+query response. Multi-select values are read from `db_values.json_value` and
+are duplicated into `db_value_refs` on writes; reads do not reconstruct them
+from refs. The engine inserts view record positions when records are created,
+but queries sort by requested property rules or record ID and do not apply
+those positions. It stores quick filters as a schema column but does not map
+or use them in view updates or queries.

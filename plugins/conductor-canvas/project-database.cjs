@@ -150,6 +150,20 @@ function allRecordSnapshots(store, sourceId, includeArchived = false) {
   return store.records.filter((r) => r.sourceId === sourceId && (includeArchived || r.archivedAt === null))
     .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id)).map((r) => recordSnapshot(store, r));
 }
+function legacyProjectDatabaseForSource(store, sourceId) {
+  const legacy = store.legacyProjectDatabase;
+  if (!legacy) return { values: [], valueRefs: [], viewRecordPositions: [], relationEdges: [], events: [] };
+  const propertyIds = new Set(store.properties.filter((row) => row.sourceId === sourceId).map((row) => row.id));
+  const recordIds = new Set(store.records.filter((row) => row.sourceId === sourceId).map((row) => row.id));
+  const viewIds = new Set(store.views.filter((row) => row.sourceId === sourceId).map((row) => row.id));
+  return {
+    values: store.values.filter((row) => recordIds.has(row.recordId) && row.legacy).map((row) => row.legacy),
+    valueRefs: (legacy.valueRefs || []).filter((row) => recordIds.has(row.record_id) && propertyIds.has(row.property_id)),
+    viewRecordPositions: (legacy.viewRecordPositions || []).filter((row) => viewIds.has(row.view_id) && recordIds.has(row.record_id)),
+    relationEdges: (legacy.relationEdges || []).filter((row) => propertyIds.has(row.property_id)),
+    events: (legacy.events || []).filter((row) => row.source_id === sourceId || (row.record_id && recordIds.has(row.record_id))),
+  };
+}
 function validatePropertyValue(property, value) {
   if (value === null) return;
   const invalid = (expected) => fail(`${property.name} expects ${expected}`, 'INVALID_VALUE');
@@ -231,7 +245,13 @@ function query(store, command) {
   if (command.cursor) { const index = records.findIndex((item) => item.record.id === command.cursor); if (index >= 0) records = records.slice(index + 1); }
   const limit = command.limit ?? 100; const more = records.length > limit; records = records.slice(0, limit);
   if (command.projection) { const projection = new Set(command.projection); records = records.map((item) => ({ record: item.record, values: Object.fromEntries(Object.entries(item.values).filter(([id]) => projection.has(id))) })); }
-  return { ...snapshot, view, records, nextCursor: more ? records.at(-1)?.record.id ?? null : null };
+  return {
+    ...snapshot,
+    view,
+    records,
+    nextCursor: more ? records.at(-1)?.record.id ?? null : null,
+    legacyProjectDatabase: legacyProjectDatabaseForSource(store, command.sourceId),
+  };
 }
 
 function apply(store, command) {
@@ -359,9 +379,10 @@ function createProjectDatabase(options = {}) {
       catch (error) { if (error.code === 'ENOENT') store = defaultStore(); else throw error; }
       const rows = (key) => dataset[key] || [];
       const parsed = (value, fallback) => { if (typeof value !== 'string') return value ?? fallback; try { return JSON.parse(value); } catch { return fallback; } };
-      const replace = (list, incoming) => {
-        const ids = new Set(incoming.map((row) => row.id).filter((id) => typeof id === 'string'));
-        return [...list.filter((row) => !ids.has(row.id)), ...incoming];
+      const mergeRows = (list, incoming, keyOf) => {
+        const incomingByKey = new Map(incoming.map((row) => [keyOf(row), row]));
+        const incomingKeys = new Set(incomingByKey.keys());
+        return [...list.filter((row) => !incomingKeys.has(keyOf(row))), ...incomingByKey.values()];
       };
       const timestamp = (value) => Number.isFinite(value) ? value : 0;
       const mappedSources = rows('sources').map((row) => ({
@@ -377,7 +398,7 @@ function createProjectDatabase(options = {}) {
       });
       const mappedOptions = rows('options').map((row) => ({ ...row, id: row.id, propertyId: row.property_id, name: String(row.name || ''),
         color: row.color ?? null, groupId: row.group_id ?? null, position: String(row.position || ''), archivedAt: row.archived_at ?? null }));
-      const mappedRecords = rows('records').map((row) => ({ ...row, id: row.id, sourceId: row.source_id, title: String(row.title_plain || ''),
+      const mappedRecords = rows('records').map((row) => ({ ...row, id: row.id, sourceId: row.source_id, title: String(row.title_plain || ''), bodyPath: row.body_path ?? null,
         revision: Number.isSafeInteger(row.revision) && row.revision > 0 ? row.revision : 1, createdAt: timestamp(row.created_at),
         updatedAt: timestamp(row.updated_at), archivedAt: row.archived_at ?? null,
         legacy: { titleRich: parsed(row.title_rich_json, null), bodyPath: row.body_path ?? null, bodyHash: row.body_hash ?? null,
@@ -398,14 +419,21 @@ function createProjectDatabase(options = {}) {
         filter: parsed(row.filter_json, null), sorts: parsed(row.sort_json, []), layout: parsed(row.layout_json, {}),
         createdAt: timestamp(row.created_at), updatedAt: timestamp(row.updated_at), archivedAt: row.archived_at ?? null,
         legacy: { quickFilters: parsed(row.quick_filters_json, null), ...row } }));
-      store.sources = replace(store.sources, mappedSources);
-      store.properties = replace(store.properties, mappedProperties);
-      store.options = replace(store.options, mappedOptions);
-      store.records = replace(store.records, mappedRecords);
+      store.sources = mergeRows(store.sources, mappedSources, (row) => row.id);
+      store.properties = mergeRows(store.properties, mappedProperties, (row) => row.id);
+      store.options = mergeRows(store.options, mappedOptions, (row) => row.id);
+      store.records = mergeRows(store.records, mappedRecords, (row) => row.id);
       const importedRecordIds = new Set(mappedRecords.map((record) => record.id));
-      store.values = [...store.values.filter((value) => !importedRecordIds.has(value.recordId)), ...mappedValues];
-      store.views = replace(store.views, mappedViews);
-      store.legacyProjectDatabase = { valueRefs: rows('valueRefs'), viewRecordPositions: rows('viewRecordPositions'), relationEdges: rows('relationEdges'), events: rows('events') };
+      store.values = mergeRows(store.values.filter((value) => !importedRecordIds.has(value.recordId)), mappedValues,
+        (row) => `${row.recordId}\0${row.propertyId}`);
+      store.views = mergeRows(store.views, mappedViews, (row) => row.id);
+      const legacy = store.legacyProjectDatabase || { valueRefs: [], viewRecordPositions: [], relationEdges: [], events: [] };
+      store.legacyProjectDatabase = {
+        valueRefs: mergeRows(legacy.valueRefs || [], rows('valueRefs'), (row) => `${row.record_id}\0${row.property_id}\0${row.target_kind}\0${row.target_id}`),
+        viewRecordPositions: mergeRows(legacy.viewRecordPositions || [], rows('viewRecordPositions'), (row) => `${row.view_id}\0${row.record_id}\0${row.group_key ?? ''}`),
+        relationEdges: mergeRows(legacy.relationEdges || [], rows('relationEdges'), (row) => `${row.property_id}\0${row.source_record_id}\0${row.target_record_id}`),
+        events: mergeRows(legacy.events || [], rows('events'), (row) => row.id),
+      };
       const temp = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`;
       fs.writeFileSync(temp, JSON.stringify(store), { mode: 0o600 }); fs.renameSync(temp, file);
       return { importedSources: mappedSources.length, importedRecords: mappedRecords.length, importedViews: mappedViews.length };
