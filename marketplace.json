@@ -5,6 +5,18 @@
   },
   "plugins": [
     {
+      "name": "app-builder",
+      "source": {
+        "source": "local",
+        "path": "./plugins/app-builder"
+      },
+      "policy": {
+        "installation": "available",
+        "authentication": "on_use"
+      },
+      "category": "development"
+    },
+    {
       "name": "browser",
       "source": {
         "source": "local",

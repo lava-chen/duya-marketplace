@@ -1,6 +1,6 @@
 # Standalone Mini App plugin template
 
-Copy this directory to your own plugin project. Change the plugin ID, name,
+Copy this directory from the installed `app-builder` plugin to your own plugin project. Change the plugin ID, name,
 App ID, capability ID, tool names, and UI. Keep the matching declarations in
 `.duya-plugin/plugin.json`, `mcp/servers.json`, and `permissions/policy.json`.
 The `apps/notes/index.html` page communicates only through the generic
