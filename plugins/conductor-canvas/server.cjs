@@ -111,7 +111,7 @@ function summary(canvas) {
   return { id: canvas.id, name: canvas.name, description: canvas.description, createdAt: canvas.createdAt, updatedAt: canvas.updatedAt, elementCount: canvas.elements.length + (canvas.widgets || []).length, isFavorite: canvas.isFavorite === true, tags: canvas.tags || [], groupId: canvas.groupId || null, layoutConfig: canvas.layoutConfig || {}, sortOrder: canvas.sortOrder || 0, projectPath: canvas.projectPath || null };
 }
 function snapshot(canvas) {
-  return { canvas: { id: canvas.id, name: canvas.name, description: canvas.description, layoutConfig: canvas.layoutConfig || {}, sortOrder: canvas.sortOrder || 0, projectPath: canvas.projectPath || null, isFavorite: canvas.isFavorite, tags: canvas.tags, groupId: canvas.groupId, legacy: canvas.legacy }, elements: canvas.elements, widgets: canvas.widgets || [], actionCursor: canvas.actionCursor };
+  return { canvas: { id: canvas.id, name: canvas.name, description: canvas.description, layoutConfig: canvas.layoutConfig || {}, sortOrder: canvas.sortOrder || 0, projectPath: canvas.projectPath || null, createdAt: canvas.createdAt, updatedAt: canvas.updatedAt, isFavorite: canvas.isFavorite, tags: canvas.tags, groupId: canvas.groupId, legacy: canvas.legacy }, elements: canvas.elements, widgets: canvas.widgets || [], actions: canvas.actions || [], actionCursor: canvas.actionCursor };
 }
 function findEmpty(canvas, input) {
   const w = Math.max(1, Math.min(WIDTH, finite(input.w, 'w', 5)));
@@ -189,7 +189,7 @@ function importedCanvas(snapshotInput, name, groupIds = new Map()) {
     id: importedId, name: String(name || sourceCanvas.name || 'Imported canvas').trim().slice(0, 100),
     description: String(sourceCanvas.description || ''), layoutConfig: sourceCanvas.layoutConfig || {},
     sortOrder: Number(sourceCanvas.sortOrder) || 0, projectPath: null,
-    createdAt, updatedAt: createdAt, actionCursor: Number(source.actionCursor) || 0,
+    createdAt: sourceCanvas.createdAt || createdAt, updatedAt: sourceCanvas.updatedAt || createdAt, actionCursor: Number(source.actionCursor) || 0,
     isFavorite: sourceCanvas.isFavorite === true,
     tags: Array.isArray(sourceCanvas.tags) ? sourceCanvas.tags.filter((item) => typeof item === 'string').slice(0, 20) : [],
     groupId: groupIds.get(sourceCanvas.groupId) || null,
@@ -199,6 +199,7 @@ function importedCanvas(snapshotInput, name, groupIds = new Map()) {
       sortOrder: sourceCanvas.sortOrder, projectPath: sourceCanvas.projectPath,
       createdAt: sourceCanvas.createdAt, updatedAt: sourceCanvas.updatedAt,
       widgets: source.widgets || sourceCanvas.legacy?.widgets, actions: source.actions || sourceCanvas.legacy?.actions },
+    actions: Array.isArray(source.actions) ? source.actions : Array.isArray(sourceCanvas.legacy?.actions) ? sourceCanvas.legacy.actions : [],
     elements: sourceElements.map((item) => {
       const rawKind = String(item.type || item.elementKind || item.nativeKind || item.native_kind || 'shape');
       const kind = String(item.nativeKind || item.native_kind || rawKind).split('/').pop();
@@ -224,11 +225,12 @@ function importedCanvas(snapshotInput, name, groupIds = new Map()) {
         ...(item.permissions && typeof item.permissions === 'object' ? { permissions: item.permissions } : {}),
         ...(item.metadata && typeof item.metadata === 'object' ? { metadata: item.metadata } : {}),
         ...(Number.isFinite(Number(item.dataVersion)) ? { dataVersion: Number(item.dataVersion) } : {}),
-        legacy: { ...item.legacy, elementKind: item.elementKind || item.legacy?.elementKind, nativeKind: item.nativeKind || item.legacy?.nativeKind,
+        legacy: { ...item.legacy, id: item.legacy?.id || item.id, canvasId: item.legacy?.canvasId || item.canvasId, type: item.type || item.legacy?.type,
+          elementKind: item.elementKind || item.legacy?.elementKind, nativeKind: item.nativeKind || item.legacy?.nativeKind,
           position: item.legacy?.position || item.position, sourceCode: item.sourceCode || item.legacy?.sourceCode, state: item.state || item.legacy?.state,
           dataVersion: item.dataVersion, permissions: item.permissions,
           metadata: item.metadata, createdAt: item.createdAt, updatedAt: item.updatedAt },
-        createdAt: item.createdAt || createdAt, updatedAt: createdAt,
+        createdAt: item.createdAt || createdAt, updatedAt: item.updatedAt || createdAt,
       };
     }), widgets: Array.isArray(source.widgets) ? source.widgets.map((widget) => ({ ...widget, canvasId: importedId, position: freeformPosition(widget.position || {}) })) : [], undoStack: [], redoStack: [],
   };
@@ -293,7 +295,7 @@ function referencedAssetIds(value, ids = new Set()) {
 function snapshotWithAssets(canvas) {
   const result = snapshot(canvas);
   result.assets = [];
-  for (const assetId of referencedAssetIds([result.elements, result.widgets])) {
+  for (const assetId of referencedAssetIds(result)) {
     try {
       const metadata = JSON.parse(fs.readFileSync(path.join(assetDir, `${assetId}.json`), 'utf8'));
       const bytes = fs.readFileSync(path.join(assetDir, assetId));

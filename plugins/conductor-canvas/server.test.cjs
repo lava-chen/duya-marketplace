@@ -87,7 +87,7 @@ test('legacy bundle assets are imported into plugin storage and references are r
   const bytes = Buffer.from('canvas attachment');
   const imported = await mcp.call('canvas_import_bundle', { bundle: {
     format: 'duya.conductor-legacy-bundle', version: 1, groups: [],
-    canvases: [{ canvas: { id: 'old-canvas', name: 'Archive' }, elements: [{
+    canvases: [{ canvas: { id: 'old-canvas', name: 'Archive', createdAt: 100, updatedAt: 200 }, actions: [{ id: 2, actionType: 'element.create_native', payload: { nodeType: 'file' } }], elements: [{
       id: 'old-element', canvasId: 'old-canvas', elementKind: 'native/file', native_kind: 'file',
       type: 'file', position: { x: -2, y: 3, w: 9, h: 4, zIndex: 7, rotation: 0 },
       config: { assetId: 'legacy-asset', mimeType: 'text/plain' },
@@ -106,8 +106,12 @@ test('legacy bundle assets are imported into plugin storage and references are r
   assert.equal(Object.hasOwn(element.metadata, '__proto__'), true);
   assert.equal(element.metadata.__proto__.assetId, element.config.assetId);
   assert.equal(element.dataVersion, 4);
+  assert.equal(element.updatedAt, 456);
   assert.equal(element.legacy.createdAt, 123);
+  assert.equal(element.legacy.canvasId, 'old-canvas');
   assert.notEqual(element.config.assetId, 'legacy-asset');
+  assert.equal(snapshot.actions[0].actionType, 'element.create_native');
+  assert.equal(snapshot.canvas.createdAt, 100);
   const asset = await mcp.call('canvas_asset_get', { assetId: element.config.assetId });
   assert.equal(Buffer.from(asset.base64, 'base64').toString(), bytes.toString());
   const portable = await mcp.call('canvas_export', { canvasId: imported.currentCanvasId });
