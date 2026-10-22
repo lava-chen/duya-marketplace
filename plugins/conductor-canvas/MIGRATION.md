@@ -29,3 +29,7 @@ not silently read, change, or delete the former database or its asset files.
 The plugin's project database preserves typed sources, properties, records,
 views, and query behavior behind a plugin-owned JSON store. Its request
 contract is intentionally independent from DUYA's SQLite and IPC services.
+Canvas settings also persist in plugin-owned storage. An optional
+OpenAI-compatible provider handles widget refinement through a plugin-owned
+prompt and validated JSON response; provider credentials stay in the private
+plugin settings file and are omitted from status and model-list results.

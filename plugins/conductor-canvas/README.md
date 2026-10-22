@@ -31,6 +31,13 @@ and local image/file uploads.
   elements, connectors, groups, and canvas rename.
 - `canvas_project_database`: run typed source, property, record, view, and
   query commands against the plugin-owned per-project database.
+- `canvas_settings_get`, `canvas_settings_set`: persist plugin settings across
+  App and MCP restarts.
+- `canvas_provider_status`, `canvas_provider_list`,
+  `canvas_provider_configure`: configure the optional OpenAI-compatible refine
+  provider. The status and model-list responses never include the API key.
+- `canvas_refine_call`: send one widget data refinement request to the
+  configured provider. The prompt and response validation live in this plugin.
 - `canvas_export`, `canvas_import`: move canvases through portable JSON,
   including referenced assets.
 - `canvas_import_bundle`: import collections exported by `legacy-export.cjs`,
@@ -49,9 +56,13 @@ and local image/file uploads.
   return layout guidance.
 
 Canvas data is stored in `${DUYA_PLUGIN_DATA}/canvases.json`, uploaded assets
-in `${DUYA_PLUGIN_DATA}/assets`, and project data under the same plugin-owned
-data root. The agent and Mini App use separate MCP processes; cross-process
-locks protect updates to the canvas store and each project database.
+in `${DUYA_PLUGIN_DATA}/assets`, settings (including provider credentials) in
+`${DUYA_PLUGIN_DATA}/settings.json`, and project data under the same
+plugin-owned data root. Private files are written with owner-only permissions.
+The agent and Mini App use separate MCP processes; cross-process locks protect
+updates to the canvas store, settings, and each project database. The optional
+provider can also be configured through `CANVAS_OPENAI_BASE_URL`,
+`CANVAS_OPENAI_MODEL`, and `CANVAS_OPENAI_API_KEY` environment variables.
 
 The plugin service does not read the former Conductor database. To migrate
 existing data explicitly, run:

@@ -9,6 +9,8 @@ const path = require('node:path');
 const os = require('node:os');
 const { randomUUID, createHash } = require('node:crypto');
 const { createProjectDatabase } = require('./project-database.cjs');
+const { createSettingsStore } = require('./settings-store.cjs');
+const { createRefineProvider } = require('./refine-provider.cjs');
 
 const storePath = path.resolve(process.env.DUYA_CANVAS_STORE || path.join(os.homedir(), '.duya', 'plugins', 'conductor-canvas', 'canvases.json'));
 const WIDTH = 40;
@@ -19,6 +21,8 @@ const MAX_ASSET_BYTES = 5 * 1024 * 1024;
 const lockPath = `${storePath}.lock`;
 const assetDir = path.join(path.dirname(storePath), 'assets');
 const projectDatabase = createProjectDatabase({ dataRoot: process.env.DUYA_PLUGIN_DATA || path.dirname(storePath) });
+const settingsStore = createSettingsStore(process.env.DUYA_PLUGIN_DATA || path.dirname(storePath));
+const callRefine = createRefineProvider({ settings: settingsStore });
 
 // The agent and a Mini App may each run their own MCP process. Keep the
 // read/modify/write transaction under one cross-process lock so an edit from
@@ -148,6 +152,12 @@ const tools = [
   { name: 'canvas_get_snapshot', description: 'Read one canvas with all positions and element content.', inputSchema: object({ canvasId: string }) },
   { name: 'canvas_execute_action', description: 'Apply a Conductor domain action to a canvas, preserving native element fields and freeform positions.', inputSchema: { type: 'object', properties: { action: { type: 'object', properties: {}, additionalProperties: true } }, required: ['action'], additionalProperties: false } },
   { name: 'canvas_project_database', description: 'Read or update the plugin-owned project database using its typed source, property, record, view, and query commands.', inputSchema: { type: 'object', properties: { request: { type: 'object', properties: { projectPath: string, command: { type: 'object', properties: {}, additionalProperties: true } }, required: ['projectPath', 'command'], additionalProperties: false } }, required: ['request'], additionalProperties: false } },
+  { name: 'canvas_settings_get', description: 'Read a persisted non-secret Canvas plugin setting.', inputSchema: object({ key: string }, ['key']) },
+  { name: 'canvas_settings_set', description: 'Persist a JSON Canvas plugin setting. Provider secrets must use canvas_provider_configure.', inputSchema: object({ key: string, value: {} }, ['key', 'value']) },
+  { name: 'canvas_provider_status', description: 'Read OpenAI-compatible Canvas provider setup status without revealing the API key.', inputSchema: object({}) },
+  { name: 'canvas_provider_list', description: 'List the configured OpenAI-compatible provider for the Canvas model selector.', inputSchema: object({}) },
+  { name: 'canvas_provider_configure', description: 'Configure the optional OpenAI-compatible refine provider.', inputSchema: object({ baseURL: string, model: string, secretAPIkey: { type: ['string', 'null'] } }) },
+  { name: 'canvas_refine_call', description: 'Refine one widget data object using the configured OpenAI-compatible provider.', inputSchema: object({ sessionId: string, userRequest: string, widgetType: string, currentData: { type: 'object' }, iteration: number, maxIterations: number, screenshotBase64: string }, ['sessionId', 'userRequest', 'widgetType', 'currentData', 'iteration', 'maxIterations', 'screenshotBase64']) },
   { name: 'canvas_export', description: 'Export a canvas snapshot as portable JSON.', inputSchema: object({ canvasId: string }) },
   { name: 'canvas_import', description: 'Import a Conductor Canvas snapshot JSON object as a new canvas.', inputSchema: object({ snapshot: { type: 'object' }, name: string }, ['snapshot']) },
   { name: 'canvas_import_bundle', description: 'Import a legacy Conductor export bundle with canvases and groups in one transaction.', inputSchema: object({ bundle: { type: 'object' } }, ['bundle']) },
@@ -526,6 +536,18 @@ async function callUnlocked(name, input) {
   } else if (name === 'canvas_project_database') {
     if (!input.request || typeof input.request !== 'object') fail('request must include projectPath and command.');
     result = await projectDatabase.invoke(input.request);
+  } else if (name === 'canvas_settings_get') {
+    result = { value: await settingsStore.get(input.key) };
+  } else if (name === 'canvas_settings_set') {
+    result = { success: await settingsStore.set(input.key, input.value) };
+  } else if (name === 'canvas_provider_status') {
+    result = await settingsStore.providerStatus();
+  } else if (name === 'canvas_provider_list') {
+    result = { providers: await settingsStore.listProviders() };
+  } else if (name === 'canvas_provider_configure') {
+    result = await settingsStore.configureProvider(input);
+  } else if (name === 'canvas_refine_call') {
+    result = await callRefine(input);
   } else if (name === 'canvas_get_knowledge') {
     result = { coordinateSystem: 'Canvas uses 40 × 30 grid units with origin at the top-left.', guidance: 'Leave breathing room between elements, place related notes close together, and connect only directly related items.' };
   } else if (name === 'canvas_import') {
