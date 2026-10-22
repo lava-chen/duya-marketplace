@@ -30,8 +30,9 @@ without references to Canvas in the host implementation.
 - Preserve the original feature set, including rich native elements,
   connections, presentation, workbench/data views, undo/redo, and integration
   between the visual editor and agent tool calls.
-- Offer an explicit export/import path from the built-in Canvas. Installation
-  must never silently read or delete DUYA's existing user data.
+- The plugin now provides an explicit read-only SQLite export script and a
+  bundle import tool. Installation never silently reads or deletes DUYA data.
+  Existing asset files and dynamic widget execution still need migration.
 - After an installed desktop build supports opening, editing, reloading,
   permissions, and agent MCP calls end to end, switch the DUYA entry point to
   the installed App. Remove the old implementation only after data migration

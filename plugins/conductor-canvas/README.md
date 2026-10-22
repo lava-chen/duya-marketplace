@@ -31,6 +31,8 @@ The editor also renders and edits table cells and provides a presentation view.
 - `canvas_get_snapshot`, `canvas_list_elements`: read canvas content.
 - `canvas_export`, `canvas_import`: move canvases through portable JSON,
   including snapshots exported from the previous DUYA Conductor format.
+- `canvas_import_bundle`: import a collection exported by the plugin's
+  `legacy-export.cjs`, including group membership and original element data.
 - `canvas_create_element`, `canvas_move_element`, `canvas_resize_element`,
   `canvas_fill_content`, `canvas_style_element`, `canvas_delete_element`:
   edit elements.
@@ -46,6 +48,17 @@ The server writes atomically and keeps the file private to the current user.
 The Mini App and agent use separate MCP processes against the same data store;
 a cross-process lock protects each read/modify/write transaction.
 
-The plugin does not read or modify DUYA's private Conductor database.
-Portable JSON import is available, but migration of existing canvases still
-requires a supported export path and feature parity review.
+The plugin service does not read DUYA's private Conductor database. To migrate
+existing data explicitly, run:
+
+```sh
+node plugins/conductor-canvas/legacy-export.cjs /path/to/duya-main.db /path/to/canvases.json
+```
+
+Then use **Import** in the Canvas App to select `canvases.json`. The exporter
+opens the database read only, includes live WAL content, and refuses to
+overwrite an existing output file. The imported copy preserves original
+metadata, widgets, action history, source code, and positions under `legacy`
+fields where the new editor cannot yet interpret them. It does not migrate
+referenced asset files or execute former dynamic widgets. Keep the source
+database and asset directory until full feature parity has been reviewed.

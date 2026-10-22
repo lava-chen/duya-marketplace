@@ -103,10 +103,10 @@ function clampPosition(position) {
   };
 }
 function summary(canvas) {
-  return { id: canvas.id, name: canvas.name, description: canvas.description, updatedAt: canvas.updatedAt, elementCount: canvas.elements.length, isFavorite: canvas.isFavorite === true, tags: canvas.tags || [], groupId: canvas.groupId || null };
+  return { id: canvas.id, name: canvas.name, description: canvas.description, createdAt: canvas.createdAt, updatedAt: canvas.updatedAt, elementCount: canvas.elements.length, isFavorite: canvas.isFavorite === true, tags: canvas.tags || [], groupId: canvas.groupId || null };
 }
 function snapshot(canvas) {
-  return { canvas: { id: canvas.id, name: canvas.name, description: canvas.description, width: WIDTH, height: HEIGHT }, elements: canvas.elements, actionCursor: canvas.actionCursor };
+  return { canvas: { id: canvas.id, name: canvas.name, description: canvas.description, width: WIDTH, height: HEIGHT, isFavorite: canvas.isFavorite, tags: canvas.tags, groupId: canvas.groupId, legacy: canvas.legacy }, elements: canvas.elements, actionCursor: canvas.actionCursor };
 }
 function findEmpty(canvas, input) {
   const w = Math.max(1, Math.min(WIDTH, finite(input.w, 'w', 5)));
@@ -142,6 +142,7 @@ const tools = [
   { name: 'canvas_get_snapshot', description: 'Read one canvas with all positions and element content.', inputSchema: object({ canvasId: string }) },
   { name: 'canvas_export', description: 'Export a canvas snapshot as portable JSON.', inputSchema: object({ canvasId: string }) },
   { name: 'canvas_import', description: 'Import a Conductor Canvas snapshot JSON object as a new canvas.', inputSchema: object({ snapshot: { type: 'object' }, name: string }, ['snapshot']) },
+  { name: 'canvas_import_bundle', description: 'Import a legacy Conductor export bundle with canvases and groups in one transaction.', inputSchema: object({ bundle: { type: 'object' } }, ['bundle']) },
   { name: 'canvas_list_elements', description: 'List elements with compact identifiers, content summaries, and positions.', inputSchema: object({ canvasId: string }) },
   { name: 'canvas_create_element', description: 'Add a shape, sticky, text, document, table, link, image, file, or widget element.', inputSchema: object({ canvasId: string, type: { type: 'string', enum: ['shape', 'sticky', 'text', 'document', 'table', 'link', 'image', 'file', 'widget'] }, position: object({ x: number, y: number, w: number, h: number }), config: { type: 'object' } }, ['type', 'position']) },
   { name: 'canvas_connect_elements', description: 'Connect two canvas elements with a labeled relationship line.', inputSchema: object({ canvasId: string, sourceId: string, targetId: string, label: string }, ['sourceId', 'targetId']) },
@@ -163,6 +164,53 @@ const mutatingTools = new Set([
   'canvas_create_element', 'canvas_connect_elements', 'canvas_group_elements', 'canvas_ungroup_elements', 'canvas_move_element', 'canvas_resize_element',
   'canvas_fill_content', 'canvas_style_element', 'canvas_delete_element', 'canvas_apply_layout',
 ]);
+
+function importedCanvas(snapshotInput, name, groupIds = new Map()) {
+  const outer = snapshotInput && typeof snapshotInput === 'object' ? snapshotInput : fail('snapshot must be an object.');
+  const source = outer.result && typeof outer.result === 'object' && outer.result.canvas ? outer.result : outer;
+  if (JSON.stringify(source).length > 10_000_000) fail('A snapshot import is limited to 10 MB.');
+  const sourceCanvas = source.canvas && typeof source.canvas === 'object' ? source.canvas : {};
+  const sourceElements = Array.isArray(source.elements) ? source.elements : [];
+  if (sourceElements.length > MAX_ELEMENTS) fail(`Import is limited to ${MAX_ELEMENTS} elements per canvas.`);
+  const createdAt = now();
+  const canvas = {
+    id: randomUUID(), name: String(name || sourceCanvas.name || 'Imported canvas').trim().slice(0, 100),
+    description: String(sourceCanvas.description || ''),
+    createdAt, updatedAt: createdAt, actionCursor: 0,
+    isFavorite: sourceCanvas.isFavorite === true,
+    tags: Array.isArray(sourceCanvas.tags) ? sourceCanvas.tags.filter((item) => typeof item === 'string').slice(0, 20) : [],
+    groupId: groupIds.get(sourceCanvas.groupId) || null,
+    // Keep fields the smaller editor cannot yet interpret. A later plugin
+    // version can replay or render them without revisiting DUYA's database.
+    legacy: { ...sourceCanvas.legacy, id: sourceCanvas.legacy?.id || sourceCanvas.id, layoutConfig: sourceCanvas.layoutConfig || sourceCanvas.legacy?.layoutConfig,
+      sortOrder: sourceCanvas.sortOrder, projectPath: sourceCanvas.projectPath,
+      createdAt: sourceCanvas.createdAt, updatedAt: sourceCanvas.updatedAt,
+      widgets: source.widgets || sourceCanvas.legacy?.widgets, actions: source.actions || sourceCanvas.legacy?.actions },
+    elements: sourceElements.map((item) => {
+      const kind = String(item.type || item.elementKind || 'shape').split('/').pop();
+      const type = ['sticky', 'shape', 'text', 'document', 'table', 'link', 'image', 'file', 'widget', 'connector', 'group'].includes(kind) ? kind : 'widget';
+      const config = item.config && typeof item.config === 'object' ? { ...item.config } : {};
+      if (type === 'connector') {
+        const endpointId = (endpoint) => typeof endpoint === 'string' ? endpoint : endpoint && typeof endpoint.nodeId === 'string' ? endpoint.nodeId : undefined;
+        config.sourceId = config.sourceId || endpointId(config.source);
+        config.targetId = config.targetId || endpointId(config.target);
+        if (!config.sourceId || !config.targetId) config.orphanedLegacyConnector = true;
+      }
+      return {
+        id: typeof item.id === 'string' && item.id ? item.id : randomUUID(), type,
+        position: clampPosition(item.position || {}), config,
+        ...(item.vizSpec && typeof item.vizSpec === 'object' ? { vizSpec: item.vizSpec } : {}),
+        legacy: { ...item.legacy, elementKind: item.elementKind || item.legacy?.elementKind, nativeKind: item.nativeKind || item.legacy?.nativeKind,
+          position: item.legacy?.position || item.position, sourceCode: item.sourceCode || item.legacy?.sourceCode, state: item.state || item.legacy?.state,
+          dataVersion: item.dataVersion, permissions: item.permissions,
+          metadata: item.metadata, createdAt: item.createdAt, updatedAt: item.updatedAt },
+        createdAt: item.createdAt || createdAt, updatedAt: createdAt,
+      };
+    }), undoStack: [], redoStack: [],
+  };
+  if (!canvas.name) fail('Canvas name is required.');
+  return canvas;
+}
 
 async function callUnlocked(name, input) {
   const store = readStore();
@@ -199,41 +247,26 @@ async function callUnlocked(name, input) {
   } else if (name === 'canvas_get_knowledge') {
     result = { coordinateSystem: 'Canvas uses 40 × 30 grid units with origin at the top-left.', guidance: 'Leave breathing room between elements, place related notes close together, and connect only directly related items.' };
   } else if (name === 'canvas_import') {
-    const outer = input.snapshot && typeof input.snapshot === 'object' ? input.snapshot : fail('snapshot must be an object.');
-    const source = outer.result && typeof outer.result === 'object' && outer.result.canvas ? outer.result : outer;
-    if (JSON.stringify(source).length > 10_000_000) fail('Snapshot import is limited to 10 MB.');
-    const sourceCanvas = source.canvas && typeof source.canvas === 'object' ? source.canvas : {};
-    const sourceElements = Array.isArray(source.elements) ? source.elements : [];
-    if (sourceElements.length > MAX_ELEMENTS) fail(`Import is limited to ${MAX_ELEMENTS} elements.`);
     if (store.canvases.length >= MAX_CANVASES) fail('Canvas limit reached.');
-    const canvas = {
-      id: randomUUID(),
-      name: String(input.name || sourceCanvas.name || 'Imported canvas').trim().slice(0, 100),
-      description: String(sourceCanvas.description || ''),
-      createdAt: now(), updatedAt: now(), actionCursor: 0,
-      elements: sourceElements.map((item) => {
-        const kind = String(item.type || item.elementKind || 'shape').split('/').pop();
-        const type = ['sticky', 'shape', 'text', 'document', 'table', 'link', 'image', 'file', 'widget', 'connector', 'group'].includes(kind) ? kind : 'shape';
-        return {
-          id: typeof item.id === 'string' && item.id ? item.id : randomUUID(),
-          type,
-          position: clampPosition(item.position || {}),
-          config: (() => {
-            const config = item.config && typeof item.config === 'object' ? { ...item.config } : {};
-            if (type === 'connector') {
-              const endpointId = (endpoint) => typeof endpoint === 'string' ? endpoint : endpoint && typeof endpoint.nodeId === 'string' ? endpoint.nodeId : undefined;
-              config.sourceId = config.sourceId || endpointId(config.source);
-              config.targetId = config.targetId || endpointId(config.target);
-              if (!config.sourceId || !config.targetId) config.orphanedLegacyConnector = true;
-            }
-            return config;
-          })(),
-          ...(item.vizSpec && typeof item.vizSpec === 'object' ? { vizSpec: item.vizSpec } : {}),
-          createdAt: item.createdAt || now(), updatedAt: now(),
-        };
-      }), undoStack: [], redoStack: [],
-    };
+    const canvas = importedCanvas(input.snapshot, input.name);
     store.canvases.unshift(canvas); store.currentCanvasId = canvas.id; writeStore(store); result = { canvas: summary(canvas), currentCanvasId: canvas.id, importedElements: canvas.elements.length };
+  } else if (name === 'canvas_import_bundle') {
+    const bundle = input.bundle;
+    if (!bundle || bundle.format !== 'duya.conductor-legacy-bundle' || bundle.version !== 1 || !Array.isArray(bundle.canvases)) fail('Unsupported legacy Canvas bundle.');
+    if (bundle.canvases.length > MAX_CANVASES - store.canvases.length) fail('Canvas limit reached.');
+    if (JSON.stringify(bundle).length > 50_000_000) fail('Bundle import is limited to 50 MB.');
+    const groupIds = new Map();
+    const groups = Array.isArray(bundle.groups) ? bundle.groups : [];
+    for (const group of groups) {
+      if (!group || typeof group.id !== 'string' || typeof group.name !== 'string') fail('Invalid Canvas group.');
+      const newGroup = { id: randomUUID(), name: group.name.trim().slice(0, 80), createdAt: now(), legacy: group };
+      store.groups.push(newGroup); groupIds.set(group.id, newGroup.id);
+    }
+    const canvases = bundle.canvases.map((item) => importedCanvas(item, undefined, groupIds));
+    store.canvases.unshift(...canvases);
+    if (canvases.length) store.currentCanvasId = canvases[0].id;
+    writeStore(store);
+    result = { importedCanvases: canvases.length, importedElements: canvases.reduce((sum, canvas) => sum + canvas.elements.length, 0), currentCanvasId: store.currentCanvasId };
   } else {
     const canvas = canvasById(store, input.canvasId);
     const beforeElements = JSON.parse(JSON.stringify(canvas.elements));
@@ -315,7 +348,7 @@ function errorResponse(id, error) { return { jsonrpc: '2.0', id, error: { code: 
 async function handle(message) {
   if (!message || message.jsonrpc !== '2.0' || message.id === undefined) return null;
   try {
-    if (message.method === 'initialize') return { jsonrpc: '2.0', id: message.id, result: { protocolVersion: message.params?.protocolVersion || '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'conductor_canvas', version: '0.2.0' } } };
+    if (message.method === 'initialize') return { jsonrpc: '2.0', id: message.id, result: { protocolVersion: message.params?.protocolVersion || '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'conductor_canvas', version: '0.3.0' } } };
     if (message.method === 'ping') return { jsonrpc: '2.0', id: message.id, result: {} };
     if (message.method === 'tools/list') return { jsonrpc: '2.0', id: message.id, result: { tools } };
     if (message.method === 'tools/call') {
