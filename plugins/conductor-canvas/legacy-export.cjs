@@ -8,8 +8,9 @@ const { DatabaseSync } = require('node:sqlite');
 
 const databasePath = process.argv[2];
 const outputPath = process.argv[3];
-if (!databasePath || !outputPath || process.argv.length !== 4) {
-  process.stderr.write('Usage: node legacy-export.cjs /path/to/duya-main.db /path/to/canvases.json\n');
+const assetRoot = process.argv[4];
+if (!databasePath || !outputPath || process.argv.length > 5) {
+  process.stderr.write('Usage: node legacy-export.cjs /path/to/duya-main.db /path/to/canvases.json [path/to/conductor-assets]\n');
   process.exit(2);
 }
 if (!fs.existsSync(databasePath)) throw new Error(`Database does not exist: ${databasePath}`);
@@ -20,6 +21,15 @@ const parse = (value, fallback) => {
   if (typeof value !== 'string') return fallback;
   try { return JSON.parse(value); } catch { return fallback; }
 };
+const mimeFor = (fileName) => ({
+  '.pdf': 'application/pdf', '.txt': 'text/plain', '.md': 'text/markdown',
+  '.doc': 'application/msword', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
+  '.svg': 'image/svg+xml', '.webp': 'image/webp', '.bmp': 'image/bmp',
+}[require('node:path').extname(fileName).toLowerCase()] || 'application/octet-stream');
+const MAX_IMPORTED_ASSET_BYTES = 5 * 1024 * 1024;
+const MAX_BUNDLE_ASSET_BYTES = 35 * 1024 * 1024;
+const path = require('node:path');
 const hasTable = (name) => Boolean(database.prepare('SELECT 1 FROM sqlite_master WHERE type = ? AND name = ?').get('table', name));
 const rows = (name, canvasId) => hasTable(name)
   ? database.prepare(`SELECT * FROM ${name} WHERE canvas_id = ?`).all(canvasId)
@@ -33,6 +43,8 @@ try {
       id: row.id, name: row.name, sortOrder: row.sort_order, projectPath: row.project_path,
       createdAt: row.created_at, updatedAt: row.updated_at,
     })) : [];
+  let assetBytes = 0;
+  const assets = [];
   const canvases = database.prepare('SELECT * FROM conductor_canvases ORDER BY sort_order, created_at').all().map((row) => {
     const widgets = rows('conductor_widgets', row.id).map((widget) => ({
       id: widget.id, canvasId: widget.canvas_id, kind: widget.kind, type: widget.type,
@@ -50,6 +62,22 @@ try {
       permissions: parse(element.permissions, {}), metadata: parse(element.metadata, {}),
       createdAt: element.created_at, updatedAt: element.updated_at,
     }));
+    const canvasAssetDir = row.project_path
+      ? path.join(row.project_path, '.duya', 'assets', row.id)
+      : assetRoot ? path.join(assetRoot, row.id) : null;
+    if (canvasAssetDir && fs.existsSync(canvasAssetDir)) {
+      for (const entry of fs.readdirSync(canvasAssetDir, { withFileTypes: true })) {
+        if (!entry.isFile() || entry.name.endsWith('.json')) continue;
+        const match = entry.name.match(/^([a-f0-9-]{32,36})-(.+)$/i);
+        if (!match) continue;
+        const file = path.join(canvasAssetDir, entry.name);
+        const bytes = fs.readFileSync(file);
+        if (bytes.length > MAX_IMPORTED_ASSET_BYTES) throw new Error(`Asset ${entry.name} exceeds the plugin's 5 MB asset limit; reduce it before export.`);
+        assetBytes += bytes.length;
+        if (assetBytes > MAX_BUNDLE_ASSET_BYTES) throw new Error('Assets exceed the 35 MB legacy bundle limit; export fewer canvases at a time.');
+        assets.push({ canvasId: row.id, assetId: match[1], name: match[2], mimeType: mimeFor(match[2]), base64: bytes.toString('base64') });
+      }
+    }
     // Older databases stored Canvas content only in conductor_widgets.
     if (!elements.length) for (const widget of widgets) elements.push({
       id: widget.id, canvasId: widget.canvasId, elementKind: `widget/${widget.type}`,
@@ -69,8 +97,8 @@ try {
     };
   });
   database.exec('COMMIT');
-  fs.writeFileSync(outputPath, JSON.stringify({ format: 'duya.conductor-legacy-bundle', version: 1, groups, canvases }, null, 2), { flag: 'wx', mode: 0o600 });
-  process.stderr.write(`Exported ${canvases.length} canvases to ${outputPath}\n`);
+  fs.writeFileSync(outputPath, JSON.stringify({ format: 'duya.conductor-legacy-bundle', version: 1, groups, canvases, assets }, null, 2), { flag: 'wx', mode: 0o600 });
+  process.stderr.write(`Exported ${canvases.length} canvases and ${assets.length} assets to ${outputPath}\n`);
 } catch (error) {
   try { database.exec('ROLLBACK'); } catch { /* no active transaction */ }
   throw error;

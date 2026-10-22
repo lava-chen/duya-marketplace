@@ -8,6 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { randomUUID, createHash } = require('node:crypto');
+const { createProjectDatabase } = require('./project-database.cjs');
 
 const storePath = path.resolve(process.env.DUYA_CANVAS_STORE || path.join(os.homedir(), '.duya', 'plugins', 'conductor-canvas', 'canvases.json'));
 const WIDTH = 40;
@@ -17,6 +18,7 @@ const MAX_ELEMENTS = 5000;
 const MAX_ASSET_BYTES = 5 * 1024 * 1024;
 const lockPath = `${storePath}.lock`;
 const assetDir = path.join(path.dirname(storePath), 'assets');
+const projectDatabase = createProjectDatabase({ dataRoot: process.env.DUYA_PLUGIN_DATA || path.dirname(storePath) });
 
 // The agent and a Mini App may each run their own MCP process. Keep the
 // read/modify/write transaction under one cross-process lock so an edit from
@@ -102,13 +104,14 @@ function clampPosition(position) {
     y: Math.max(0, Math.min(HEIGHT - h, finite(position.y, 'y', 1))),
     w, h,
     zIndex: finite(position.zIndex, 'zIndex', 1),
+    rotation: finite(position.rotation, 'rotation', 0),
   };
 }
 function summary(canvas) {
-  return { id: canvas.id, name: canvas.name, description: canvas.description, createdAt: canvas.createdAt, updatedAt: canvas.updatedAt, elementCount: canvas.elements.length, isFavorite: canvas.isFavorite === true, tags: canvas.tags || [], groupId: canvas.groupId || null };
+  return { id: canvas.id, name: canvas.name, description: canvas.description, createdAt: canvas.createdAt, updatedAt: canvas.updatedAt, elementCount: canvas.elements.length + (canvas.widgets || []).length, isFavorite: canvas.isFavorite === true, tags: canvas.tags || [], groupId: canvas.groupId || null, layoutConfig: canvas.layoutConfig || {}, sortOrder: canvas.sortOrder || 0, projectPath: canvas.projectPath || null };
 }
 function snapshot(canvas) {
-  return { canvas: { id: canvas.id, name: canvas.name, description: canvas.description, width: WIDTH, height: HEIGHT, isFavorite: canvas.isFavorite, tags: canvas.tags, groupId: canvas.groupId, legacy: canvas.legacy }, elements: canvas.elements, actionCursor: canvas.actionCursor };
+  return { canvas: { id: canvas.id, name: canvas.name, description: canvas.description, layoutConfig: canvas.layoutConfig || {}, sortOrder: canvas.sortOrder || 0, projectPath: canvas.projectPath || null, isFavorite: canvas.isFavorite, tags: canvas.tags, groupId: canvas.groupId, legacy: canvas.legacy }, elements: canvas.elements, widgets: canvas.widgets || [], actionCursor: canvas.actionCursor };
 }
 function findEmpty(canvas, input) {
   const w = Math.max(1, Math.min(WIDTH, finite(input.w, 'w', 5)));
@@ -140,15 +143,18 @@ const tools = [
   { name: 'canvas_group_rename', description: 'Rename a canvas group.', inputSchema: object({ groupId: string, name: string }, ['groupId', 'name']) },
   { name: 'canvas_group_delete', description: 'Delete a canvas group and unassign its canvases.', inputSchema: object({ groupId: string }, ['groupId']) },
   { name: 'canvas_rename', description: 'Rename a canvas.', inputSchema: object({ canvasId: string, name: string }, ['name']) },
+  { name: 'canvas_update', description: 'Update canvas metadata and saved layout settings.', inputSchema: object({ canvasId: string, name: string, description: string, layoutConfig: { type: 'object' }, sortOrder: number, isFavorite: { type: 'boolean' }, groupId: string, tags: { type: 'array', items: string } }, ['canvasId']) },
   { name: 'canvas_delete', description: 'Delete a canvas and all of its elements.', inputSchema: object({ canvasId: string }, ['canvasId']) },
   { name: 'canvas_get_snapshot', description: 'Read one canvas with all positions and element content.', inputSchema: object({ canvasId: string }) },
+  { name: 'canvas_execute_action', description: 'Apply a Conductor domain action to a canvas, preserving native element fields and freeform positions.', inputSchema: { type: 'object', properties: { action: { type: 'object', properties: {}, additionalProperties: true } }, required: ['action'], additionalProperties: false } },
+  { name: 'canvas_project_database', description: 'Read or update the plugin-owned project database using its typed source, property, record, view, and query commands.', inputSchema: { type: 'object', properties: { request: { type: 'object', properties: { projectPath: string, command: { type: 'object', properties: {}, additionalProperties: true } }, required: ['projectPath', 'command'], additionalProperties: false } }, required: ['request'], additionalProperties: false } },
   { name: 'canvas_export', description: 'Export a canvas snapshot as portable JSON.', inputSchema: object({ canvasId: string }) },
   { name: 'canvas_import', description: 'Import a Conductor Canvas snapshot JSON object as a new canvas.', inputSchema: object({ snapshot: { type: 'object' }, name: string }, ['snapshot']) },
   { name: 'canvas_import_bundle', description: 'Import a legacy Conductor export bundle with canvases and groups in one transaction.', inputSchema: object({ bundle: { type: 'object' } }, ['bundle']) },
   { name: 'canvas_asset_put', description: 'Store a local image or file in the Canvas plugin data directory.', inputSchema: object({ name: string, mimeType: string, base64: string }, ['name', 'mimeType', 'base64']) },
   { name: 'canvas_asset_get', description: 'Read a Canvas plugin asset by its content hash.', inputSchema: object({ assetId: string }, ['assetId']) },
   { name: 'canvas_list_elements', description: 'List elements with compact identifiers, content summaries, and positions.', inputSchema: object({ canvasId: string }) },
-  { name: 'canvas_create_element', description: 'Add a shape, sticky, text, document, table, link, image, file, or widget element.', inputSchema: object({ canvasId: string, type: { type: 'string', enum: ['shape', 'sticky', 'text', 'document', 'table', 'link', 'image', 'file', 'widget'] }, position: object({ x: number, y: number, w: number, h: number }), config: { type: 'object' } }, ['type', 'position']) },
+  { name: 'canvas_create_element', description: 'Add a native canvas element, file, link, table, database view, or widget.', inputSchema: object({ canvasId: string, type: { type: 'string', enum: ['shape', 'sticky', 'text', 'document', 'table', 'link', 'image', 'file', 'pdf', 'database', 'section', 'frame', 'widget'] }, position: object({ x: number, y: number, w: number, h: number }), config: { type: 'object' } }, ['type', 'position']) },
   { name: 'canvas_connect_elements', description: 'Connect two canvas elements with a labeled relationship line.', inputSchema: object({ canvasId: string, sourceId: string, targetId: string, label: string }, ['sourceId', 'targetId']) },
   { name: 'canvas_group_elements', description: 'Group selected canvas elements together.', inputSchema: object({ canvasId: string, elementIds: { type: 'array', items: string }, name: string }, ['elementIds']) },
   { name: 'canvas_ungroup_elements', description: 'Remove a group while keeping its member elements.', inputSchema: object({ canvasId: string, groupId: string }, ['groupId']) },
@@ -175,12 +181,14 @@ function importedCanvas(snapshotInput, name, groupIds = new Map()) {
   if (JSON.stringify(source).length > 10_000_000) fail('A snapshot import is limited to 10 MB.');
   const sourceCanvas = source.canvas && typeof source.canvas === 'object' ? source.canvas : {};
   const sourceElements = Array.isArray(source.elements) ? source.elements : [];
+  const importedId = randomUUID();
   if (sourceElements.length > MAX_ELEMENTS) fail(`Import is limited to ${MAX_ELEMENTS} elements per canvas.`);
   const createdAt = now();
   const canvas = {
-    id: randomUUID(), name: String(name || sourceCanvas.name || 'Imported canvas').trim().slice(0, 100),
-    description: String(sourceCanvas.description || ''),
-    createdAt, updatedAt: createdAt, actionCursor: 0,
+    id: importedId, name: String(name || sourceCanvas.name || 'Imported canvas').trim().slice(0, 100),
+    description: String(sourceCanvas.description || ''), layoutConfig: sourceCanvas.layoutConfig || {},
+    sortOrder: Number(sourceCanvas.sortOrder) || 0, projectPath: null,
+    createdAt, updatedAt: createdAt, actionCursor: Number(source.actionCursor) || 0,
     isFavorite: sourceCanvas.isFavorite === true,
     tags: Array.isArray(sourceCanvas.tags) ? sourceCanvas.tags.filter((item) => typeof item === 'string').slice(0, 20) : [],
     groupId: groupIds.get(sourceCanvas.groupId) || null,
@@ -191,8 +199,10 @@ function importedCanvas(snapshotInput, name, groupIds = new Map()) {
       createdAt: sourceCanvas.createdAt, updatedAt: sourceCanvas.updatedAt,
       widgets: source.widgets || sourceCanvas.legacy?.widgets, actions: source.actions || sourceCanvas.legacy?.actions },
     elements: sourceElements.map((item) => {
-      const kind = String(item.type || item.elementKind || 'shape').split('/').pop();
-      const type = ['sticky', 'shape', 'text', 'document', 'table', 'link', 'image', 'file', 'widget', 'connector', 'group'].includes(kind) ? kind : 'widget';
+      const rawKind = String(item.type || item.elementKind || item.nativeKind || item.native_kind || 'shape');
+      const kind = String(item.nativeKind || item.native_kind || rawKind).split('/').pop();
+      const inferredKind = kind === 'pdf' || (kind === 'file' && item.config?.mimeType === 'application/pdf') ? 'file' : kind;
+      const type = ['sticky', 'shape', 'text', 'document', 'table', 'link', 'image', 'file', 'pdf', 'database', 'section', 'frame', 'widget', 'connector', 'group'].includes(inferredKind) ? inferredKind : rawKind.startsWith('widget/') ? 'widget' : 'widget';
       const config = item.config && typeof item.config === 'object' ? { ...item.config } : {};
       if (type === 'connector') {
         const endpointId = (endpoint) => typeof endpoint === 'string' ? endpoint : endpoint && typeof endpoint.nodeId === 'string' ? endpoint.nodeId : undefined;
@@ -201,19 +211,214 @@ function importedCanvas(snapshotInput, name, groupIds = new Map()) {
         if (!config.sourceId || !config.targetId) config.orphanedLegacyConnector = true;
       }
       return {
-        id: typeof item.id === 'string' && item.id ? item.id : randomUUID(), type,
-        position: clampPosition(item.position || {}), config,
+        ...item,
+        id: typeof item.id === 'string' && item.id ? item.id : randomUUID(), canvasId: importedId, type,
+        elementKind: item.elementKind || rawKind,
+        nativeKind: item.nativeKind ?? item.native_kind ?? (rawKind.startsWith('native/') ? rawKind.slice(7) : null),
+        native_kind: item.native_kind ?? item.nativeKind ?? (rawKind.startsWith('native/') ? rawKind.slice(7) : null),
+        position: freeformPosition(item.position || {}), config,
         ...(item.vizSpec && typeof item.vizSpec === 'object' ? { vizSpec: item.vizSpec } : {}),
+        ...(item.sourceCode ? { sourceCode: item.sourceCode } : {}),
+        ...(item.state ? { state: item.state } : {}),
+        ...(item.permissions && typeof item.permissions === 'object' ? { permissions: item.permissions } : {}),
+        ...(item.metadata && typeof item.metadata === 'object' ? { metadata: item.metadata } : {}),
+        ...(Number.isFinite(Number(item.dataVersion)) ? { dataVersion: Number(item.dataVersion) } : {}),
         legacy: { ...item.legacy, elementKind: item.elementKind || item.legacy?.elementKind, nativeKind: item.nativeKind || item.legacy?.nativeKind,
           position: item.legacy?.position || item.position, sourceCode: item.sourceCode || item.legacy?.sourceCode, state: item.state || item.legacy?.state,
           dataVersion: item.dataVersion, permissions: item.permissions,
           metadata: item.metadata, createdAt: item.createdAt, updatedAt: item.updatedAt },
         createdAt: item.createdAt || createdAt, updatedAt: createdAt,
       };
-    }), undoStack: [], redoStack: [],
+    }), widgets: Array.isArray(source.widgets) ? source.widgets.map((widget) => ({ ...widget, canvasId: importedId, position: freeformPosition(widget.position || {}) })) : [], undoStack: [], redoStack: [],
   };
   if (!canvas.name) fail('Canvas name is required.');
   return canvas;
+}
+
+function validateBundleAssets(assets) {
+  if (assets === undefined) return [];
+  if (!Array.isArray(assets) || assets.length > 1000) fail('Legacy bundle assets must be an array with at most 1000 files.');
+  let total = 0;
+  return assets.map((asset) => {
+    if (!asset || typeof asset.assetId !== 'string' || asset.assetId.length > 100) fail('Invalid legacy asset reference.');
+    const encoded = String(asset.base64 || '');
+    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(encoded) || encoded.length > Math.ceil(MAX_ASSET_BYTES / 3) * 4 + 4) fail(`Legacy asset ${asset.name || asset.assetId} exceeds the 5 MB asset limit or is invalid.`);
+    const bytes = Buffer.from(encoded, 'base64');
+    if (!bytes.length || bytes.length > MAX_ASSET_BYTES) fail(`Legacy asset ${asset.name || asset.assetId} must be between 1 byte and 5 MB.`);
+    const mimeType = String(asset.mimeType || 'application/octet-stream').slice(0, 120);
+    if (!/^[a-z0-9][a-z0-9.+-]*\/[a-z0-9][a-z0-9.+-]*$/i.test(mimeType)) fail('Invalid legacy asset MIME type.');
+    total += bytes.length;
+    if (total > 35 * 1024 * 1024) fail('Legacy bundle assets are limited to 35 MB total.');
+    return { oldId: asset.assetId, name: path.basename(String(asset.name || 'asset')).slice(0, 180), mimeType, bytes };
+  });
+}
+
+function remapAssetReferences(value, assetIds) {
+  if (Array.isArray(value)) return value.map((item) => remapAssetReferences(item, assetIds));
+  if (!value || typeof value !== 'object') return value;
+  const result = {};
+  for (const [key, item] of Object.entries(value)) {
+    result[key] = ['assetId', 'snapshotAssetId'].includes(key) && assetIds.has(item)
+      ? assetIds.get(item)
+      : remapAssetReferences(item, assetIds);
+  }
+  return result;
+}
+
+function storeBundleAssets(assets) {
+  const assetIds = new Map();
+  for (const asset of assets) {
+    const assetId = createHash('sha256').update(asset.bytes).digest('hex');
+    const dataPath = path.join(assetDir, assetId);
+    const metadataPath = path.join(assetDir, `${assetId}.json`);
+    fs.mkdirSync(assetDir, { recursive: true });
+    if (!fs.existsSync(dataPath)) fs.writeFileSync(dataPath, asset.bytes, { flag: 'wx', mode: 0o600 });
+    if (!fs.existsSync(metadataPath)) fs.writeFileSync(metadataPath, JSON.stringify({ name: asset.name, mimeType: asset.mimeType, size: asset.bytes.length }), { flag: 'wx', mode: 0o600 });
+    assetIds.set(asset.oldId, assetId);
+  }
+  return assetIds;
+}
+
+function referencedAssetIds(value, ids = new Set()) {
+  if (Array.isArray(value)) { for (const item of value) referencedAssetIds(item, ids); return ids; }
+  if (!value || typeof value !== 'object') return ids;
+  for (const [key, item] of Object.entries(value)) {
+    if (['assetId', 'snapshotAssetId'].includes(key) && typeof item === 'string' && /^[a-f0-9]{64}$/.test(item)) ids.add(item);
+    referencedAssetIds(item, ids);
+  }
+  return ids;
+}
+
+function snapshotWithAssets(canvas) {
+  const result = snapshot(canvas);
+  result.assets = [];
+  for (const assetId of referencedAssetIds([result.elements, result.widgets])) {
+    try {
+      const metadata = JSON.parse(fs.readFileSync(path.join(assetDir, `${assetId}.json`), 'utf8'));
+      const bytes = fs.readFileSync(path.join(assetDir, assetId));
+      result.assets.push({ assetId, name: metadata.name, mimeType: metadata.mimeType, base64: bytes.toString('base64') });
+    } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  }
+  return result;
+}
+
+function freeformPosition(position = {}) {
+  return {
+    ...position,
+    x: finite(position.x, 'x', 0),
+    y: finite(position.y, 'y', 0),
+    w: finite(position.w, 'w', 4),
+    h: finite(position.h, 'h', 3),
+    zIndex: finite(position.zIndex, 'zIndex', 0),
+    rotation: finite(position.rotation, 'rotation', 0),
+  };
+}
+
+function actionElement(canvas, elementKind, position, config = {}, extras = {}) {
+  const id = randomUUID();
+  const nativeKind = elementKind.startsWith('native/') ? elementKind.slice(7) : undefined;
+  const element = {
+    id, canvasId: canvas.id, type: nativeKind || elementKind, elementKind,
+    ...(nativeKind ? { nativeKind, native_kind: nativeKind } : {}),
+    position: freeformPosition(position), config: config && typeof config === 'object' ? config : {},
+    state: 'idle', dataVersion: 1, createdAt: Date.now(), updatedAt: Date.now(), vizSpec: null,
+    sourceCode: null, permissions: { agentCanRead: true, agentCanWrite: true, agentCanDelete: true },
+    metadata: { label: elementKind, tags: [], createdBy: 'user' }, ...extras,
+  };
+  canvas.elements.push(element);
+  return element;
+}
+
+function applyConductorAction(store, action) {
+  if (!action || typeof action !== 'object' || typeof action.action !== 'string') fail('action must be a Conductor action object.');
+  const canvas = canvasById(store, action.canvasId);
+  const before = { elements: JSON.parse(JSON.stringify(canvas.elements)), widgets: JSON.parse(JSON.stringify(canvas.widgets || [])) };
+  let value;
+  const find = (id) => canvas.elements.find((element) => element.id === id);
+  const requireElement = (id) => find(id) || fail(`Element not found: ${id}`);
+  const positionPatch = (element, position) => { element.position = freeformPosition({ ...element.position, ...position }); element.updatedAt = Date.now(); };
+  switch (action.action) {
+    case 'canvas.rename':
+      canvas.name = String(action.name || '').trim().slice(0, 100) || fail('name is required.'); value = { canvas: summary(canvas) }; break;
+    case 'widget.create': {
+      const widget = { id: action.widgetId || randomUUID(), canvasId: canvas.id, kind: action.kind || 'dynamic', type: String(action.type || 'dynamic'), position: freeformPosition(action.position), config: action.config || {}, data: action.data || {}, dataVersion: 1, sourceCode: action.sourceCode || null, state: 'idle', permissions: action.permissions || { agentCanRead: true, agentCanWrite: true, agentCanDelete: true }, createdAt: Date.now(), updatedAt: Date.now() };
+      canvas.widgets = canvas.widgets || []; canvas.widgets.push(widget); value = { widget }; break;
+    }
+    case 'widget.move': case 'widget.resize': {
+      const widget = (canvas.widgets || []).find((item) => item.id === action.widgetId); if (!widget) fail(`Widget not found: ${action.widgetId}`);
+      widget.position = { ...widget.position, ...freeformPosition({ ...widget.position, ...action.position }) }; widget.updatedAt = Date.now(); value = { widget }; break;
+    }
+    case 'widget.update_config': case 'widget.update_data': {
+      const widget = (canvas.widgets || []).find((item) => item.id === action.widgetId); if (!widget) fail(`Widget not found: ${action.widgetId}`);
+      const key = action.action.endsWith('config') ? 'config' : 'data'; widget[key] = { ...widget[key], ...(action[key] || {}) }; widget.updatedAt = Date.now(); widget.dataVersion += 1; value = { widget }; break;
+    }
+    case 'widget.delete': case 'widget.restore': {
+      canvas.widgets = canvas.widgets || [];
+      if (action.action === 'widget.delete') { canvas.widgets = canvas.widgets.filter((widget) => widget.id !== action.widgetId); value = { deleted: action.widgetId }; }
+      else { const widget = action.widget && typeof action.widget === 'object' ? action.widget : null; if (!widget) fail('widget.restore requires a widget.'); canvas.widgets.push(widget); value = { widget }; }
+      break;
+    }
+    case 'element.create': {
+      if (!String(action.elementKind || '').trim()) fail('elementKind is required.');
+      const element = actionElement(canvas, String(action.elementKind), action.position, action.config || {}, { vizSpec: action.vizSpec || null, ...(action.permissions ? { permissions: action.permissions } : {}) }); value = { element }; break;
+    }
+    case 'element.create_native': {
+      const type = String(action.nodeType || '').replace(/^native\//, '');
+      const element = actionElement(canvas, `native/${type}`, action.position, { ...(action.content || {}), ...(action.style ? { style: action.style } : {}) }); value = { element }; break;
+    }
+    case 'element.move': case 'element.update': {
+      const element = requireElement(action.elementId);
+      if (action.position) positionPatch(element, action.position);
+      if (action.config) element.config = { ...element.config, ...action.config };
+      if (action.metadata) element.metadata = { ...element.metadata, ...action.metadata };
+      if (action.vizSpec !== undefined) element.vizSpec = action.vizSpec;
+      if (action.action === 'element.update') element.updatedAt = Date.now();
+      value = { element }; break;
+    }
+    case 'element.update_content': {
+      const element = requireElement(action.elementId); element.config = { ...element.config, ...(action.content || {}) }; element.updatedAt = Date.now(); value = { element }; break;
+    }
+    case 'element.delete': {
+      const element = requireElement(action.elementId); canvas.elements = canvas.elements.filter((item) => item.id !== element.id); value = { deleted: element.id }; break;
+    }
+    case 'element.reparent': {
+      const element = requireElement(action.elementId); element.metadata = { ...element.metadata, parentId: action.parentId || null }; element.updatedAt = Date.now(); value = { element }; break;
+    }
+    case 'element.arrange': {
+      const layout = Array.isArray(action.layout) ? action.layout : [];
+      layout.forEach((item) => { const element = requireElement(item.elementId); positionPatch(element, item.position || {}); }); value = { updated: layout.length }; break;
+    }
+    case 'connector.create': {
+      const sourceId = typeof action.source === 'string' ? action.source : action.source?.nodeId;
+      const targetId = typeof action.target === 'string' ? action.target : action.target?.nodeId;
+      for (const id of [sourceId, targetId]) if (id && !canvas.elements.some((element) => element.id === id)) fail(`Connector endpoint element not found: ${id}`);
+      const connectorConfig = { source: action.source, target: action.target, label: action.label || '', routingMode: action.routingMode || 'elbow' };
+      for (const key of ['curvature', 'strokeStyle', 'lineWidth', 'color', 'startMarker', 'endMarker', 'style']) if (action[key] !== undefined) connectorConfig[key] = action[key];
+      if (sourceId && targetId) Object.assign(connectorConfig, { sourceId, targetId });
+      const element = actionElement(canvas, 'native/connector', { x: 0, y: 0, w: 0, h: 0, zIndex: 0 }, connectorConfig); value = { element }; break;
+    }
+    case 'group.create': {
+      const memberIds = Array.isArray(action.memberIds) ? [...new Set(action.memberIds)] : [];
+      const members = memberIds.map(requireElement); if (!members.length) fail('Select at least one element to group.');
+      const left = Math.min(...members.map((item) => item.position.x)); const top = Math.min(...members.map((item) => item.position.y));
+      const right = Math.max(...members.map((item) => item.position.x + item.position.w)); const bottom = Math.max(...members.map((item) => item.position.y + item.position.h));
+      const group = actionElement(canvas, 'native/group', { x: left, y: top, w: right - left, h: bottom - top, zIndex: -1 }, { memberIds, title: action.title || 'Group', ...(action.bgColor === undefined ? {} : { bgColor: action.bgColor }) }); value = { group }; break;
+    }
+    case 'group.ungroup': case 'group.add_members': case 'group.remove_members': {
+      const group = requireElement(action.groupId); const ids = new Set(group.config.memberIds || []);
+      if (action.action === 'group.ungroup') { canvas.elements = canvas.elements.filter((item) => item.id !== group.id); value = { ungrouped: group.id }; break; }
+      (action.memberIds || []).forEach((id) => action.action === 'group.add_members' ? ids.add(id) : ids.delete(id));
+      group.config = { ...group.config, memberIds: [...ids] }; group.updatedAt = Date.now(); value = { group }; break;
+    }
+    default: fail(`Unsupported Conductor action: ${action.action}`);
+  }
+  canvas.undoStack = canvas.undoStack || []; canvas.undoStack.push(before); if (canvas.undoStack.length > 100) canvas.undoStack.shift(); canvas.redoStack = [];
+  canvas.updatedAt = now(); canvas.actionCursor = (canvas.actionCursor || 0) + 1;
+  canvas.actions = canvas.actions || [];
+  canvas.actions.push({ id: canvas.actionCursor, canvasId: canvas.id, widgetId: action.widgetId || null, actor: action.actor || 'agent', actionType: action.action, payload: { ...action }, resultPatch: value, mergedFrom: null, reversible: 1, ts: Date.now(), undoneAt: null });
+  if (canvas.actions.length > 1000) canvas.actions.splice(0, canvas.actions.length - 1000);
+  writeStore(store);
+  return { success: true, result: value, snapshot: snapshot(canvas) };
 }
 
 async function callUnlocked(name, input) {
@@ -255,10 +460,20 @@ async function callUnlocked(name, input) {
     const group = store.groups.find((item) => item.id === input.groupId); if (!group) fail('Group not found.'); store.groups = store.groups.filter((item) => item.id !== group.id); store.canvases.forEach((canvas) => { if (canvas.groupId === group.id) canvas.groupId = null; }); writeStore(store); result = { deleted: group.id };
   } else if (name === 'canvas_create') {
     if (store.canvases.length >= MAX_CANVASES) fail('Canvas limit reached.');
-    const canvas = { id: randomUUID(), name: String(input.name || 'Untitled canvas').trim().slice(0, 100), description: String(input.description || ''), createdAt: now(), updatedAt: now(), isFavorite: false, tags: [], groupId: null, elements: [], actionCursor: 0, undoStack: [], redoStack: [] };
+    const canvas = { id: randomUUID(), name: String(input.name || 'Untitled canvas').trim().slice(0, 100), description: String(input.description || ''), layoutConfig: {}, sortOrder: 0, projectPath: null, createdAt: now(), updatedAt: now(), isFavorite: false, tags: [], groupId: null, elements: [], widgets: [], actionCursor: 0, undoStack: [], redoStack: [] };
     store.canvases.unshift(canvas); store.currentCanvasId = canvas.id; writeStore(store); result = { canvas: summary(canvas), currentCanvasId: canvas.id };
   } else if (name === 'canvas_rename') {
     const canvas = canvasById(store, input.canvasId); canvas.name = String(input.name || '').trim().slice(0, 100) || fail('name is required.'); canvas.updatedAt = now(); writeStore(store); result = { canvas: summary(canvas) };
+  } else if (name === 'canvas_update') {
+    const canvas = canvasById(store, input.canvasId);
+    if (input.name !== undefined) canvas.name = String(input.name).trim().slice(0, 100) || fail('name is required.');
+    if (input.description !== undefined) canvas.description = input.description === null ? null : String(input.description);
+    if (input.layoutConfig !== undefined) canvas.layoutConfig = input.layoutConfig && typeof input.layoutConfig === 'object' ? input.layoutConfig : {};
+    if (input.sortOrder !== undefined) canvas.sortOrder = finite(input.sortOrder, 'sortOrder', 0);
+    if (input.isFavorite !== undefined) canvas.isFavorite = input.isFavorite === true;
+    if (input.tags !== undefined) canvas.tags = Array.isArray(input.tags) ? input.tags.map(String).slice(0, 40) : [];
+    if (input.groupId !== undefined) { if (input.groupId && !store.groups.some((group) => group.id === input.groupId)) fail('Group not found.'); canvas.groupId = input.groupId || null; }
+    canvas.updatedAt = now(); writeStore(store); result = { canvas: summary(canvas) };
   } else if (name === 'canvas_update_metadata') {
     const canvas = canvasById(store, input.canvasId);
     if (input.isFavorite !== undefined) canvas.isFavorite = input.isFavorite === true;
@@ -267,39 +482,58 @@ async function callUnlocked(name, input) {
     canvas.updatedAt = now(); writeStore(store); result = { canvas: summary(canvas) };
   } else if (name === 'canvas_delete') {
     const canvas = canvasById(store, input.canvasId); store.canvases = store.canvases.filter((item) => item.id !== canvas.id); if (store.currentCanvasId === canvas.id) store.currentCanvasId = store.canvases[0]?.id || null; writeStore(store); result = { deleted: canvas.id, currentCanvasId: store.currentCanvasId };
+  } else if (name === 'canvas_execute_action') {
+    result = applyConductorAction(store, input.action);
+  } else if (name === 'canvas_project_database') {
+    if (!input.request || typeof input.request !== 'object') fail('request must include projectPath and command.');
+    result = await projectDatabase.invoke(input.request);
   } else if (name === 'canvas_get_knowledge') {
     result = { coordinateSystem: 'Canvas uses 40 × 30 grid units with origin at the top-left.', guidance: 'Leave breathing room between elements, place related notes close together, and connect only directly related items.' };
   } else if (name === 'canvas_import') {
     if (store.canvases.length >= MAX_CANVASES) fail('Canvas limit reached.');
     const canvas = importedCanvas(input.snapshot, input.name);
+    const assets = validateBundleAssets(input.snapshot.assets);
+    const assetIds = storeBundleAssets(assets);
+    canvas.elements = canvas.elements.map((element) => remapAssetReferences(element, assetIds));
+    canvas.widgets = canvas.widgets.map((widget) => remapAssetReferences(widget, assetIds));
     store.canvases.unshift(canvas); store.currentCanvasId = canvas.id; writeStore(store); result = { canvas: summary(canvas), currentCanvasId: canvas.id, importedElements: canvas.elements.length };
   } else if (name === 'canvas_import_bundle') {
     const bundle = input.bundle;
     if (!bundle || bundle.format !== 'duya.conductor-legacy-bundle' || bundle.version !== 1 || !Array.isArray(bundle.canvases)) fail('Unsupported legacy Canvas bundle.');
     if (bundle.canvases.length > MAX_CANVASES - store.canvases.length) fail('Canvas limit reached.');
     if (JSON.stringify(bundle).length > 50_000_000) fail('Bundle import is limited to 50 MB.');
+    const bundleAssets = validateBundleAssets(bundle.assets);
+    const assetIds = storeBundleAssets(bundleAssets);
     const groupIds = new Map();
     const groups = Array.isArray(bundle.groups) ? bundle.groups : [];
     for (const group of groups) {
       if (!group || typeof group.id !== 'string' || typeof group.name !== 'string') fail('Invalid Canvas group.');
-      const newGroup = { id: randomUUID(), name: group.name.trim().slice(0, 80), createdAt: now(), legacy: group };
+      const newGroup = { id: randomUUID(), name: group.name.trim().slice(0, 80), sortOrder: Number(group.sortOrder) || 0, projectPath: null, createdAt: group.createdAt || now(), updatedAt: group.updatedAt || now(), legacy: group };
       store.groups.push(newGroup); groupIds.set(group.id, newGroup.id);
     }
-    const canvases = bundle.canvases.map((item) => importedCanvas(item, undefined, groupIds));
+    const canvases = bundle.canvases.map((item) => {
+      const imported = importedCanvas(item, undefined, groupIds);
+      imported.elements = imported.elements.map((element) => remapAssetReferences(element, assetIds));
+      imported.widgets = imported.widgets.map((widget) => remapAssetReferences(widget, assetIds));
+      return imported;
+    });
     store.canvases.unshift(...canvases);
     if (canvases.length) store.currentCanvasId = canvases[0].id;
     writeStore(store);
-    result = { importedCanvases: canvases.length, importedElements: canvases.reduce((sum, canvas) => sum + canvas.elements.length, 0), currentCanvasId: store.currentCanvasId };
+    result = { importedCanvases: canvases.length, importedElements: canvases.reduce((sum, canvas) => sum + canvas.elements.length, 0), importedAssets: assetIds.size, currentCanvasId: store.currentCanvasId };
   } else {
     const canvas = canvasById(store, input.canvasId);
     const beforeElements = JSON.parse(JSON.stringify(canvas.elements));
     switch (name) {
       case 'canvas_get_snapshot':
-      case 'canvas_export': result = snapshot(canvas); break;
+      case 'canvas_export': result = snapshotWithAssets(canvas); break;
       case 'canvas_list_elements': result = { canvasId: canvas.id, elements: canvas.elements.map(elementSummary), count: canvas.elements.length }; break;
       case 'canvas_create_element': {
         if (canvas.elements.length >= MAX_ELEMENTS) fail('Element limit reached.');
-        const element = { id: randomUUID(), canvasId: canvas.id, type: input.type, position: clampPosition(input.position || {}), config: input.config && typeof input.config === 'object' ? input.config : {}, createdAt: now(), updatedAt: now() };
+        const elementTypes = ['shape', 'sticky', 'text', 'document', 'table', 'link', 'image', 'file', 'pdf', 'database', 'section', 'frame', 'widget'];
+        if (!elementTypes.includes(input.type)) fail('Unsupported canvas element type.');
+        const nativeKinds = ['shape', 'sticky', 'text', 'document', 'table', 'link', 'image', 'file', 'pdf', 'database', 'section', 'frame'];
+        const element = { id: randomUUID(), canvasId: canvas.id, type: input.type, elementKind: input.type.startsWith('native/') ? input.type : nativeKinds.includes(input.type) ? `native/${input.type}` : input.type === 'widget' ? 'widget/dynamic' : input.type, nativeKind: nativeKinds.includes(input.type) ? input.type : undefined, position: clampPosition(input.position || {}), config: input.config && typeof input.config === 'object' ? input.config : {}, createdAt: now(), updatedAt: now() };
         canvas.elements.push(element); result = { element }; break;
       }
       case 'canvas_connect_elements': {
@@ -330,13 +564,19 @@ async function callUnlocked(name, input) {
       case 'canvas_delete_element': { const element = elementById(canvas, input.elementId); canvas.elements = canvas.elements.filter((item) => item.id !== element.id && !(item.type === 'connector' && (item.config?.sourceId === element.id || item.config?.targetId === element.id))); result = { deleted: element.id }; break; }
       case 'canvas_undo': {
         if (!canvas.undoStack || !canvas.undoStack.length) fail('There is no canvas change to undo.');
-        canvas.redoStack = canvas.redoStack || []; canvas.redoStack.push(JSON.parse(JSON.stringify(canvas.elements)));
-        canvas.elements = canvas.undoStack.pop(); result = { undone: true }; break;
+        canvas.redoStack = canvas.redoStack || []; canvas.redoStack.push({ elements: JSON.parse(JSON.stringify(canvas.elements)), widgets: JSON.parse(JSON.stringify(canvas.widgets || [])) });
+        const previous = canvas.undoStack.pop();
+        if (Array.isArray(previous)) canvas.elements = previous;
+        else { canvas.elements = previous.elements || []; canvas.widgets = previous.widgets || []; }
+        result = { undone: true }; break;
       }
       case 'canvas_redo': {
         if (!canvas.redoStack || !canvas.redoStack.length) fail('There is no canvas change to redo.');
-        canvas.undoStack = canvas.undoStack || []; canvas.undoStack.push(JSON.parse(JSON.stringify(canvas.elements)));
-        canvas.elements = canvas.redoStack.pop(); result = { redone: true }; break;
+        canvas.undoStack = canvas.undoStack || []; canvas.undoStack.push({ elements: JSON.parse(JSON.stringify(canvas.elements)), widgets: JSON.parse(JSON.stringify(canvas.widgets || [])) });
+        const next = canvas.redoStack.pop();
+        if (Array.isArray(next)) canvas.elements = next;
+        else { canvas.elements = next.elements || []; canvas.widgets = next.widgets || []; }
+        result = { redone: true }; break;
       }
       case 'canvas_find_empty_space': result = findEmpty(canvas, input); break;
       case 'canvas_auto_layout': {
