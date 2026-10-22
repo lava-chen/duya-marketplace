@@ -1,0 +1,15 @@
+{
+  "servers": [
+    {
+      "name": "cua_repl",
+      "command": "node",
+      "args": ["${DUYA_PLUGIN_ROOT}/server.cjs"],
+      "env": {
+        "DUYA_CUA_DAEMON_PORT": "${DUYA_DAEMON_PORT:-19825}"
+      },
+      "envPassthrough": "allowlist",
+      "startupTimeoutSec": 15,
+      "toolTimeoutSec": 35
+    }
+  ]
+}

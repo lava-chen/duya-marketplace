@@ -1,0 +1,20 @@
+{
+  "name": "computer-use",
+  "id": "com.duya.computer-use",
+  "version": "0.1.0",
+  "description": "Use DUYA's guarded Computer Use capability to inspect and control the local desktop.",
+  "author": { "name": "DUYA Team", "url": "https://github.com/lava-chen/duya" },
+  "license": "MIT",
+  "keywords": ["computer-use", "cua", "desktop", "automation"],
+  "interface": {
+    "displayName": "Computer Use",
+    "shortDescription": "Operate the desktop through DUYA's approved CUA tools.",
+    "category": "automation",
+    "icon": "./assets/icon.svg",
+    "displayName_zh": "电脑操作",
+    "shortDescription_zh": "通过 DUYA 已授权的 CUA 工具操作桌面。"
+  },
+  "capabilities": {
+    "hostCapabilities": ["computer-use"]
+  }
+}

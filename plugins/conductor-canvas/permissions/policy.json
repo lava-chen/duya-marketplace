@@ -1,0 +1,13 @@
+{
+  "defaultMode": "read",
+  "writeActionsRequireApproval": true,
+  "destructiveActionsRequireApproval": true,
+  "permissions": [
+    { "name": "conductor.canvas" }
+  ],
+  "notes": [
+    "Canvas App calls require a Host-managed Plugin App capability grant.",
+    "The Host reuses the existing Canvas tool schemas and executor path.",
+    "Per-action approval tiers are not yet mapped by DUYA's Plugin App host."
+  ]
+}

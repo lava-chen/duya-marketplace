@@ -1,0 +1,21 @@
+{
+  "name": "browser",
+  "version": "0.1.0",
+  "description": "通过持久 CUA JavaScript 会话控制 DUYA 内置浏览器及已连接的 Chrome、Edge。",
+  "author": {
+    "name": "DUYA Team",
+    "url": "https://github.com/lava-chen/duya"
+  },
+  "license": "MIT",
+  "keywords": ["browser", "cua", "automation", "mcp"],
+  "interface": {
+    "displayName": "DUYA Browser",
+    "longDescription": "通过持久化 JavaScript REPL 检查和操作 DUYA 内置浏览器、Chrome 与 Edge 中的标签页。",
+    "shortDescription": "使用 CUA JavaScript 会话操作浏览器标签页。",
+    "category": "automation",
+    "icon": "./assets/icon.svg",
+    "brandColor": "#2EAD33",
+    "displayName_zh": "DUYA 浏览器",
+    "shortDescription_zh": "使用 CUA JavaScript 会话操作浏览器标签页。"
+  }
+}

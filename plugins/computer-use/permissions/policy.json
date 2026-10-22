@@ -1,0 +1,12 @@
+{
+  "defaultMode": "read",
+  "writeActionsRequireApproval": true,
+  "destructiveActionsRequireApproval": true,
+  "permissions": [
+    { "name": "computer-use.cua", "description": "Use DUYA's Host guarded computer CUA tool." }
+  ],
+  "notes": [
+    "The Host owns the executor; this plugin does not perform direct OS automation.",
+    "Plugin MCP approval and DUYA's existing Computer Use guard, approval, audit, and revoke checks apply."
+  ]
+}

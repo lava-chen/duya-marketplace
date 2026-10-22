@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Conductor Canvas</title>
+    <style>
+      :root { color-scheme: light dark; font: 13px/1.5 system-ui, sans-serif; }
+      body { margin: 0; padding: 18px; }
+      h1 { margin: 0 0 6px; font-size: 16px; }
+      p { margin: 0 0 14px; opacity: .72; }
+      .actions { display: flex; gap: 8px; }
+      button { font: inherit; padding: 7px 11px; border: 1px solid #8886; border-radius: 7px; background: transparent; cursor: pointer; }
+      button:disabled { opacity: .5; cursor: default; }
+      pre { min-height: 120px; margin: 14px 0 0; padding: 12px; border-radius: 8px; background: #8882; white-space: pre-wrap; overflow-wrap: anywhere; }
+    </style>
+  </head>
+  <body>
+    <h1>Conductor Canvas</h1>
+    <p>插件 App 通过 Host 当前运行会话读取画布；会话身份和当前画布由 Host 注入。</p>
+    <div class="actions">
+      <button id="bind" type="button">连接当前运行</button>
+      <button id="refresh" type="button" disabled>读取画布</button>
+    </div>
+    <pre id="out">等待连接。</pre>
+    <script>
+      (function () {
+        var channel = "duya.plugin-app";
+        var isBound = false;
+        var output = document.getElementById("out");
+
+        function hostCall(method, extra) {
+          return new Promise(function (resolve, reject) {
+            var id = "canvas-" + Math.random().toString(36).slice(2);
+            var timer = setTimeout(function () {
+              window.removeEventListener("message", onMessage);
+              reject(new Error("Host 调用超时"));
+            }, 30000);
+            function onMessage(event) {
+              var data = event.data;
+              if (!data || data.channel !== channel || data.id !== id) return;
+              clearTimeout(timer);
+              window.removeEventListener("message", onMessage);
+              resolve(data);
+            }
+            window.addEventListener("message", onMessage);
+            var message = { channel: channel, id: id, method: method };
+            if (extra) Object.keys(extra).forEach(function (key) { message[key] = extra[key]; });
+            window.parent.postMessage(message, "*");
+          });
+        }
+
+        document.getElementById("bind").addEventListener("click", async function () {
+          output.textContent = "正在连接当前运行…";
+          try {
+            var result = await hostCall("bind");
+            if (!result.ok) throw new Error(result.error || "无法连接当前运行");
+            isBound = true;
+            document.getElementById("refresh").disabled = false;
+            output.textContent = "已连接。读取操作由已授权的 Host Canvas capability 执行。";
+          } catch (error) {
+            output.textContent = String(error && error.message || error);
+          }
+        });
+
+        document.getElementById("refresh").addEventListener("click", async function () {
+          if (!isBound) { output.textContent = "请先连接当前运行。"; return; }
+          output.textContent = "正在读取当前画布…";
+          try {
+            var result = await hostCall("canvas_invoke", {
+              toolName: "canvas_manage",
+              arguments: { action: "get_current" }
+            });
+            output.textContent = JSON.stringify(result.result || result, null, 2);
+          } catch (error) {
+            output.textContent = String(error && error.message || error);
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>

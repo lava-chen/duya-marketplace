@@ -5,6 +5,42 @@
   },
   "plugins": [
     {
+      "name": "browser",
+      "source": {
+        "source": "local",
+        "path": "./plugins/browser"
+      },
+      "policy": {
+        "installation": "available",
+        "authentication": "on_use"
+      },
+      "category": "automation"
+    },
+    {
+      "name": "computer-use",
+      "source": {
+        "source": "local",
+        "path": "./plugins/computer-use"
+      },
+      "policy": {
+        "installation": "available",
+        "authentication": "on_use"
+      },
+      "category": "automation"
+    },
+    {
+      "name": "conductor-canvas",
+      "source": {
+        "source": "local",
+        "path": "./plugins/conductor-canvas"
+      },
+      "policy": {
+        "installation": "available",
+        "authentication": "on_use"
+      },
+      "category": "productivity"
+    },
+    {
       "name": "feishu",
       "source": {
         "source": "local",

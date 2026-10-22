@@ -1,0 +1,30 @@
+{
+  "name": "conductor-canvas",
+  "id": "com.duya.conductor-canvas",
+  "version": "0.1.0",
+  "description": "DUYA Conductor canvas as an external Plugin App, using Host-bound canvas capability calls.",
+  "author": { "name": "DUYA Team", "url": "https://github.com/lava-chen/duya" },
+  "license": "MIT",
+  "keywords": ["conductor", "canvas", "mini-app"],
+  "interface": {
+    "displayName": "Conductor Canvas",
+    "shortDescription": "Open and inspect the active Conductor canvas.",
+    "category": "productivity",
+    "icon": "./assets/icon.svg",
+    "displayName_zh": "Conductor 画布",
+    "shortDescription_zh": "打开并查看当前 Conductor 画布。"
+  },
+  "extensions": {
+    "com.duya.client": {
+      "apps": [
+        {
+          "appId": "canvas",
+          "entry": "apps/canvas/index.html",
+          "requiredCapabilities": ["conductor.canvas"],
+          "capabilityTools": [{ "capability": "conductor.canvas", "tools": [] }],
+          "stateSchemaVersion": 1
+        }
+      ]
+    }
+  }
+}
