@@ -73,6 +73,13 @@ test('native Conductor actions preserve endpoint references, metadata, and freef
   assert.equal(snapshot.elements[1].id, second.result.element.id);
   assert.deepEqual(snapshot.elements[2].config.source, endpoint);
   assert.equal(snapshot.elements[2].config.routingMode, 'curve');
+
+  const widget = await mcp.call('canvas_execute_action', { action: { action: 'widget.create', canvasId: canvas.id, kind: 'dynamic', type: 'chart', position: { x: 1, y: 2, w: 4, h: 3 }, data: { value: 1 } } });
+  const updatedWidget = await mcp.call('canvas_execute_action', { action: { action: 'widget.update_data', canvasId: canvas.id, widgetId: widget.result.widget.id, data: { label: 'updated' }, clientTs: 123 } });
+  assert.equal(updatedWidget.result.widget.dataVersion, 2);
+  await mcp.call('canvas_execute_action', { action: { action: 'widget.delete', canvasId: canvas.id, widgetId: widget.result.widget.id } });
+  const restored = await mcp.call('canvas_execute_action', { action: { action: 'widget.restore', canvasId: canvas.id, widgetId: widget.result.widget.id } });
+  assert.equal(restored.result.widget.data.label, 'updated');
 });
 
 test('legacy bundle assets are imported into plugin storage and references are remapped', async (t) => {
@@ -84,7 +91,7 @@ test('legacy bundle assets are imported into plugin storage and references are r
       id: 'old-element', canvasId: 'old-canvas', elementKind: 'native/file', native_kind: 'file',
       type: 'file', position: { x: -2, y: 3, w: 9, h: 4, zIndex: 7, rotation: 0 },
       config: { assetId: 'legacy-asset', mimeType: 'text/plain' },
-      metadata: { tag: 'imported', owner: 'user' }, state: 'idle', dataVersion: 4,
+      metadata: JSON.parse('{"tag":"imported","owner":"user","__proto__":{"assetId":"legacy-asset"}}'), state: 'idle', dataVersion: 4,
       permissions: { agentCanRead: true, agentCanWrite: false, agentCanDelete: true },
       createdAt: 123, updatedAt: 456,
     }], widgets: [] }],
@@ -96,6 +103,8 @@ test('legacy bundle assets are imported into plugin storage and references are r
   assert.equal(element.elementKind, 'native/file');
   assert.equal(element.native_kind, 'file');
   assert.equal(element.metadata.owner, 'user');
+  assert.equal(Object.hasOwn(element.metadata, '__proto__'), true);
+  assert.equal(element.metadata.__proto__.assetId, element.config.assetId);
   assert.equal(element.dataVersion, 4);
   assert.equal(element.legacy.createdAt, 123);
   assert.notEqual(element.config.assetId, 'legacy-asset');
@@ -109,6 +118,24 @@ test('legacy bundle assets are imported into plugin storage and references are r
   assert.equal(Buffer.from(roundTripAsset.base64, 'base64').toString(), bytes.toString());
 });
 
+test('portable snapshot asset bytes do not count against the 10 MB model limit', async (t) => {
+  const mcp = startServer(t);
+  const large = (value) => Buffer.alloc(4 * 1024 * 1024, value).toString('base64');
+  const snapshot = {
+    canvas: { name: 'Large attachments' },
+    elements: [
+      { id: 'a', type: 'file', position: { x: 0, y: 0, w: 4, h: 3 }, config: { assetId: 'old-a' } },
+      { id: 'b', type: 'file', position: { x: 5, y: 0, w: 4, h: 3 }, config: { assetId: 'old-b' } },
+    ], widgets: [], assets: [
+      { assetId: 'old-a', name: 'a.bin', mimeType: 'application/octet-stream', base64: large(0x31) },
+      { assetId: 'old-b', name: 'b.bin', mimeType: 'application/octet-stream', base64: large(0x32) },
+    ],
+  };
+  assert.ok(JSON.stringify(snapshot).length > 10_000_000);
+  const result = await mcp.call('canvas_import', { snapshot });
+  assert.equal(result.importedElements, 2);
+});
+
 test('project database command contract is available through the plugin MCP server', async (t) => {
   const mcp = startServer(t);
   const projectPath = '/workspace/mcp-project';
@@ -117,4 +144,12 @@ test('project database command contract is available through the plugin MCP serv
   const record = await mcp.call('canvas_project_database', { request: { projectPath, command: { type: 'record.create', sourceId, title: 'Integrated' } } });
   const queried = await mcp.call('canvas_project_database', { request: { projectPath, command: { type: 'query', sourceId } } });
   assert.equal(queried.records[0].record.id, record.record.id);
+});
+
+test('standalone App capability allowlist covers every MCP tool', async (t) => {
+  const mcp = startServer(t);
+  const listed = await mcp.request('tools/list');
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '.duya-plugin', 'plugin.json'), 'utf8'));
+  const mappings = manifest.extensions['com.duya.client'].apps[0].capabilityTools[0].tools;
+  assert.deepEqual(new Set(mappings.map((mapping) => mapping.toolName)), new Set(listed.result.tools.map((tool) => tool.name)));
 });

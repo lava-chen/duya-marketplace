@@ -178,7 +178,8 @@ const mutatingTools = new Set([
 function importedCanvas(snapshotInput, name, groupIds = new Map()) {
   const outer = snapshotInput && typeof snapshotInput === 'object' ? snapshotInput : fail('snapshot must be an object.');
   const source = outer.result && typeof outer.result === 'object' && outer.result.canvas ? outer.result : outer;
-  if (JSON.stringify(source).length > 10_000_000) fail('A snapshot import is limited to 10 MB.');
+  const { assets: _assets, ...model } = source;
+  if (JSON.stringify(model).length > 10_000_000) fail('A snapshot model is limited to 10 MB, excluding embedded assets.');
   const sourceCanvas = source.canvas && typeof source.canvas === 'object' ? source.canvas : {};
   const sourceElements = Array.isArray(source.elements) ? source.elements : [];
   const importedId = randomUUID();
@@ -256,11 +257,11 @@ function validateBundleAssets(assets) {
 function remapAssetReferences(value, assetIds) {
   if (Array.isArray(value)) return value.map((item) => remapAssetReferences(item, assetIds));
   if (!value || typeof value !== 'object') return value;
-  const result = {};
+  const result = Object.create(null);
   for (const [key, item] of Object.entries(value)) {
-    result[key] = ['assetId', 'snapshotAssetId'].includes(key) && assetIds.has(item)
+    Object.defineProperty(result, key, { value: ['assetId', 'snapshotAssetId'].includes(key) && assetIds.has(item)
       ? assetIds.get(item)
-      : remapAssetReferences(item, assetIds);
+      : remapAssetReferences(item, assetIds), enumerable: true, configurable: true, writable: true });
   }
   return result;
 }
@@ -315,6 +316,8 @@ function freeformPosition(position = {}) {
 }
 
 function actionElement(canvas, elementKind, position, config = {}, extras = {}) {
+  if (canvas.elements.length >= MAX_ELEMENTS) fail('Element limit reached.');
+  if (!elementKind.trim()) fail('elementKind is required.');
   const id = randomUUID();
   const nativeKind = elementKind.startsWith('native/') ? elementKind.slice(7) : undefined;
   const element = {
@@ -331,6 +334,7 @@ function actionElement(canvas, elementKind, position, config = {}, extras = {}) 
 
 function applyConductorAction(store, action) {
   if (!action || typeof action !== 'object' || typeof action.action !== 'string') fail('action must be a Conductor action object.');
+  if (action.actor !== undefined && !['user', 'agent', 'system'].includes(action.actor)) fail('actor must be user, agent, or system.');
   const canvas = canvasById(store, action.canvasId);
   const before = { elements: JSON.parse(JSON.stringify(canvas.elements)), widgets: JSON.parse(JSON.stringify(canvas.widgets || [])) };
   let value;
@@ -341,7 +345,8 @@ function applyConductorAction(store, action) {
     case 'canvas.rename':
       canvas.name = String(action.name || '').trim().slice(0, 100) || fail('name is required.'); value = { canvas: summary(canvas) }; break;
     case 'widget.create': {
-      const widget = { id: action.widgetId || randomUUID(), canvasId: canvas.id, kind: action.kind || 'dynamic', type: String(action.type || 'dynamic'), position: freeformPosition(action.position), config: action.config || {}, data: action.data || {}, dataVersion: 1, sourceCode: action.sourceCode || null, state: 'idle', permissions: action.permissions || { agentCanRead: true, agentCanWrite: true, agentCanDelete: true }, createdAt: Date.now(), updatedAt: Date.now() };
+      const kind = action.kind || 'dynamic'; if (!['builtin', 'template', 'dynamic'].includes(kind)) fail('Invalid widget kind.');
+      const widget = { id: action.widgetId || randomUUID(), canvasId: canvas.id, kind, type: String(action.type || 'dynamic'), position: freeformPosition(action.position), config: action.config || {}, data: action.data || {}, dataVersion: 1, sourceCode: action.sourceCode || null, state: 'idle', permissions: action.permissions || { agentCanRead: true, agentCanWrite: true, agentCanDelete: true }, createdAt: Date.now(), updatedAt: Date.now() };
       canvas.widgets = canvas.widgets || []; canvas.widgets.push(widget); value = { widget }; break;
     }
     case 'widget.move': case 'widget.resize': {
@@ -350,12 +355,30 @@ function applyConductorAction(store, action) {
     }
     case 'widget.update_config': case 'widget.update_data': {
       const widget = (canvas.widgets || []).find((item) => item.id === action.widgetId); if (!widget) fail(`Widget not found: ${action.widgetId}`);
-      const key = action.action.endsWith('config') ? 'config' : 'data'; widget[key] = { ...widget[key], ...(action[key] || {}) }; widget.updatedAt = Date.now(); widget.dataVersion += 1; value = { widget }; break;
+      if (action.action === 'widget.update_config') widget.config = { ...(action.config || {}) };
+      else widget.data = { ...widget.data, ...(action.data || {}) };
+      if (action.action === 'widget.update_data') widget.dataVersion = (widget.dataVersion || 0) + 1;
+      const pairedElement = canvas.elements.find((element) => element.id === widget.id);
+      if (pairedElement) pairedElement.config = action.action === 'widget.update_config' ? { ...widget.config } : { ...pairedElement.config, ...widget.data };
+      widget.updatedAt = Date.now(); value = { widget, ...(action.clientTs === undefined ? {} : { clientTs: action.clientTs }) }; break;
     }
     case 'widget.delete': case 'widget.restore': {
       canvas.widgets = canvas.widgets || [];
-      if (action.action === 'widget.delete') { canvas.widgets = canvas.widgets.filter((widget) => widget.id !== action.widgetId); value = { deleted: action.widgetId }; }
-      else { const widget = action.widget && typeof action.widget === 'object' ? action.widget : null; if (!widget) fail('widget.restore requires a widget.'); canvas.widgets.push(widget); value = { widget }; }
+      if (action.action === 'widget.delete') {
+        const widget = canvas.widgets.find((item) => item.id === action.widgetId); if (!widget) fail(`Widget not found: ${action.widgetId}`);
+        canvas.widgets = canvas.widgets.filter((item) => item.id !== action.widgetId);
+        canvas.elements = canvas.elements.filter((item) => item.id !== action.widgetId);
+        value = { deleted: action.widgetId, widget };
+      } else {
+        const prior = [...(canvas.actions || [])].reverse().find((entry) => entry.actionType === 'widget.delete' && entry.payload?.widgetId === action.widgetId);
+        const widget = action.widget && typeof action.widget === 'object' ? action.widget : prior?.resultPatch?.widget;
+        if (!widget) fail(`No deleted widget data found for ${action.widgetId}.`);
+        if (!canvas.widgets.some((item) => item.id === action.widgetId)) canvas.widgets.push({ ...widget, canvasId: canvas.id });
+        if (!canvas.elements.some((item) => item.id === action.widgetId)) {
+          canvas.elements.push({ id: widget.id, canvasId: canvas.id, type: `widget/${widget.type}`, elementKind: `widget/${widget.type}`, position: freeformPosition(widget.position), config: { ...(widget.data || {}), ...(widget.config || {}) }, sourceCode: widget.sourceCode || null, state: widget.state || 'idle', dataVersion: widget.dataVersion || 1, permissions: widget.permissions || {}, metadata: { label: `${widget.kind}:${widget.type}`, tags: [], createdBy: 'user' }, createdAt: widget.createdAt || Date.now(), updatedAt: Date.now() });
+        }
+        value = { widget };
+      }
       break;
     }
     case 'element.create': {
@@ -364,12 +387,14 @@ function applyConductorAction(store, action) {
     }
     case 'element.create_native': {
       const type = String(action.nodeType || '').replace(/^native\//, '');
-      const element = actionElement(canvas, `native/${type}`, action.position, { ...(action.content || {}), ...(action.style ? { style: action.style } : {}) }); value = { element }; break;
+      const content = action.content && typeof action.content === 'object' ? action.content : {};
+      const style = action.style && typeof action.style === 'object' ? action.style : {};
+      const element = actionElement(canvas, `native/${type}`, action.position, { ...content, style }, { metadata: { label: content.label || type, tags: [], createdBy: action.actor || 'user', parentId: null, childIds: [] } }); value = { element }; break;
     }
     case 'element.move': case 'element.update': {
       const element = requireElement(action.elementId);
       if (action.position) positionPatch(element, action.position);
-      if (action.config) element.config = { ...element.config, ...action.config };
+      if (action.config) element.config = { ...action.config };
       if (action.metadata) element.metadata = { ...element.metadata, ...action.metadata };
       if (action.vizSpec !== undefined) element.vizSpec = action.vizSpec;
       if (action.action === 'element.update') element.updatedAt = Date.now();
@@ -379,10 +404,21 @@ function applyConductorAction(store, action) {
       const element = requireElement(action.elementId); element.config = { ...element.config, ...(action.content || {}) }; element.updatedAt = Date.now(); value = { element }; break;
     }
     case 'element.delete': {
-      const element = requireElement(action.elementId); canvas.elements = canvas.elements.filter((item) => item.id !== element.id); value = { deleted: element.id }; break;
+      const element = requireElement(action.elementId);
+      const references = (endpoint) => typeof endpoint === 'string' ? endpoint === element.id : endpoint && endpoint.nodeId === element.id;
+      canvas.elements = canvas.elements.filter((item) => {
+        if (item.id === element.id) return false;
+        const isConnector = item.nativeKind === 'connector' || item.native_kind === 'connector' || item.type === 'connector';
+        return !isConnector || (!references(item.config?.source) && !references(item.config?.target) && item.config?.sourceId !== element.id && item.config?.targetId !== element.id);
+      });
+      value = { deleted: element.id }; break;
     }
     case 'element.reparent': {
-      const element = requireElement(action.elementId); element.metadata = { ...element.metadata, parentId: action.parentId || null }; element.updatedAt = Date.now(); value = { element }; break;
+      const element = requireElement(action.elementId); const previousParentId = element.metadata?.parentId || null; const parentId = action.parentId || null;
+      if (parentId && !canvas.elements.some((item) => item.id === parentId)) fail(`Parent element not found: ${parentId}`);
+      if (previousParentId && previousParentId !== parentId) { const oldParent = find(previousParentId); if (oldParent) oldParent.metadata = { ...oldParent.metadata, childIds: (oldParent.metadata?.childIds || []).filter((id) => id !== element.id) }; }
+      if (parentId) { const parent = find(parentId); parent.metadata = { ...parent.metadata, childIds: [...new Set([...(parent.metadata?.childIds || []), element.id])] }; }
+      element.metadata = { ...element.metadata, parentId }; element.updatedAt = Date.now(); value = { element }; break;
     }
     case 'element.arrange': {
       const layout = Array.isArray(action.layout) ? action.layout : [];
@@ -392,17 +428,18 @@ function applyConductorAction(store, action) {
       const sourceId = typeof action.source === 'string' ? action.source : action.source?.nodeId;
       const targetId = typeof action.target === 'string' ? action.target : action.target?.nodeId;
       for (const id of [sourceId, targetId]) if (id && !canvas.elements.some((element) => element.id === id)) fail(`Connector endpoint element not found: ${id}`);
-      const connectorConfig = { source: action.source, target: action.target, label: action.label || '', routingMode: action.routingMode || 'elbow' };
-      for (const key of ['curvature', 'strokeStyle', 'lineWidth', 'color', 'startMarker', 'endMarker', 'style']) if (action[key] !== undefined) connectorConfig[key] = action[key];
+      const connectorConfig = { source: action.source, target: action.target, curvature: action.curvature || 0.4, routingMode: action.routingMode === 'curve' ? 'curve' : 'elbow', style: action.style || {} };
+      if (action.label !== undefined) connectorConfig.label = action.label;
+      for (const key of ['strokeStyle', 'lineWidth', 'color', 'startMarker', 'endMarker']) if (action[key] !== undefined) connectorConfig[key] = action[key];
       if (sourceId && targetId) Object.assign(connectorConfig, { sourceId, targetId });
-      const element = actionElement(canvas, 'native/connector', { x: 0, y: 0, w: 0, h: 0, zIndex: 0 }, connectorConfig); value = { element }; break;
+      const element = actionElement(canvas, 'native/connector', { x: 0, y: 0, w: 0, h: 0, zIndex: 0 }, connectorConfig, { metadata: { label: 'Connector', tags: [], createdBy: action.actor || 'user', parentId: null, childIds: [] } }); value = { element }; break;
     }
     case 'group.create': {
       const memberIds = Array.isArray(action.memberIds) ? [...new Set(action.memberIds)] : [];
       const members = memberIds.map(requireElement); if (!members.length) fail('Select at least one element to group.');
       const left = Math.min(...members.map((item) => item.position.x)); const top = Math.min(...members.map((item) => item.position.y));
       const right = Math.max(...members.map((item) => item.position.x + item.position.w)); const bottom = Math.max(...members.map((item) => item.position.y + item.position.h));
-      const group = actionElement(canvas, 'native/group', { x: left, y: top, w: right - left, h: bottom - top, zIndex: -1 }, { memberIds, title: action.title || 'Group', ...(action.bgColor === undefined ? {} : { bgColor: action.bgColor }) }); value = { group }; break;
+      const group = actionElement(canvas, 'native/group', { x: left, y: top, w: right - left, h: bottom - top, zIndex: -1 }, { memberIds, title: action.title || 'Group', ...(action.bgColor === undefined ? {} : { bgColor: action.bgColor }) }, { metadata: { label: action.title || 'Group', tags: [], createdBy: action.actor || 'user', parentId: null, childIds: memberIds } }); value = { group }; break;
     }
     case 'group.ungroup': case 'group.add_members': case 'group.remove_members': {
       const group = requireElement(action.groupId); const ids = new Set(group.config.memberIds || []);
@@ -491,6 +528,7 @@ async function callUnlocked(name, input) {
     result = { coordinateSystem: 'Canvas uses 40 × 30 grid units with origin at the top-left.', guidance: 'Leave breathing room between elements, place related notes close together, and connect only directly related items.' };
   } else if (name === 'canvas_import') {
     if (store.canvases.length >= MAX_CANVASES) fail('Canvas limit reached.');
+    if (JSON.stringify(input.snapshot).length > 50_000_000) fail('Snapshot import, including assets, is limited to 50 MB.');
     const canvas = importedCanvas(input.snapshot, input.name);
     const assets = validateBundleAssets(input.snapshot.assets);
     const assetIds = storeBundleAssets(assets);
