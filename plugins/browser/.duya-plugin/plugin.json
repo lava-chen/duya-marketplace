@@ -1,6 +1,6 @@
 {
   "name": "browser",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "通过持久 CUA JavaScript 会话控制 DUYA 内置浏览器及已连接的 Chrome、Edge。",
   "author": {
     "name": "DUYA Team",

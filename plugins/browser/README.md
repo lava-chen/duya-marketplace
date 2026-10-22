@@ -26,6 +26,17 @@ The CUA API also supports listing, opening, switching, and closing tabs.
 Closing an attached system-browser tab releases the attachment; it does not
 close the user's tab.
 
-The plugin calls DUYA's local browser daemon. Keep the DUYA desktop app running
-and connect the DUYA Browser Bridge extension when controlling system browsers.
-MCP tool approval is governed by DUYA's plugin MCP approval flow.
+The plugin calls DUYA's local browser daemon. Keep the DUYA desktop app running.
+For Chrome or Edge, install the Browser Bridge shipped in this plugin:
+
+1. Open the browser's extension management page and enable Developer mode.
+2. Choose **Load unpacked** and select this plugin's `extension/` directory.
+3. Keep the extension connected to the DUYA desktop app. The extension in
+   DUYA's old one-click installer is version 1.5.8 and lacks `tabs.available`
+   and `tabs.attach`; use this plugin's version 1.5.9 for existing-tab control.
+
+The plugin owns the extension's source and its attached-tab behavior. DUYA's
+legacy extension and daemon remain installed for compatibility during migration;
+the Browser MCP service still depends on the daemon and is not yet a fully
+independent browser implementation. MCP tool approval is governed by DUYA's
+plugin MCP approval flow.
