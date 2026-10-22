@@ -5,15 +5,31 @@
 // subprocess, but only this reviewed desktop-tool subset reaches the agent.
 const { spawn } = require('node:child_process');
 
-const driverPath = process.env.CUA_DRIVER_PATH;
-if (!driverPath) throw new Error('Configure the Cua Driver executable path in plugin setup.');
+// An explicit path makes managed installs predictable; otherwise let the OS
+// resolve the official executable from PATH.
+const configuredDriverPath = process.env.CUA_DRIVER_PATH?.trim();
+const driverPath = configuredDriverPath || (process.platform === 'win32' ? 'cua-driver.exe' : 'cua-driver');
 const allowed = new Set([
   'get_guide', 'check_permissions', 'get_desktop_state', 'get_window_state',
   'list_windows', 'list_apps', 'get_accessibility_tree', 'get_screen_size',
   'click', 'double_click', 'right_click', 'drag', 'scroll', 'type_text',
   'press_key', 'hotkey', 'set_value', 'bring_to_front', 'verify_state',
 ]);
-const driver = spawn(driverPath, ['mcp'], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, env: process.env });
+const driverEnv = {};
+for (const name of [
+  'PATH', 'HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'TMP', 'TEMP',
+  'SystemRoot', 'WINDIR', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_RUNTIME_DIR',
+  'DISPLAY', 'WAYLAND_DISPLAY', 'DBUS_SESSION_BUS_ADDRESS', 'LANG', 'LC_ALL',
+  'CUA_DRIVER_PERMISSION_MODE',
+]) {
+  if (process.env[name] !== undefined) driverEnv[name] = process.env[name];
+}
+const driver = spawn(driverPath, ['mcp'], {
+  stdio: ['pipe', 'pipe', 'pipe'],
+  windowsHide: true,
+  shell: false,
+  env: driverEnv,
+});
 let driverInput = '';
 let hostInput = '';
 let nextId = 1;
@@ -29,7 +45,12 @@ function rejectPending(reason) {
   driverFailure = reason;
   for (const [id, item] of pending) { clearTimeout(item.timer); item.reject(new Error(reason)); pending.delete(id); }
 }
-driver.on('error', (cause) => rejectPending(`Cua Driver could not start: ${cause.message}`));
+driver.on('error', (cause) => {
+  const hint = cause.code === 'ENOENT'
+    ? 'Install the official Cua Driver and set its executable path in plugin setup, or add it to PATH.'
+    : 'Check the configured executable path and OS permissions.';
+  rejectPending(`Cua Driver could not start (${cause.message}). ${hint}`);
+});
 driver.on('exit', (code) => rejectPending(`Cua Driver exited (${code ?? 'signal'}).`));
 driver.stderr.on('data', (chunk) => process.stderr.write(chunk));
 driver.stdout.setEncoding('utf8');
@@ -81,7 +102,7 @@ async function handle(message) {
   try {
     if (message.method === 'initialize') {
       const info = await start(message.params || {});
-      return reply({ protocolVersion: info.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: 'computer_cua', version: '0.2.0' } });
+      return reply({ protocolVersion: info.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: 'computer_cua', version: '0.3.0' } });
     }
     if (!started) throw new Error('Initialize the Computer Use MCP server first.');
     if (message.method === 'ping') return reply({});
@@ -109,4 +130,20 @@ process.stdin.on('data', (chunk) => {
     catch (cause) { process.stderr.write(`Invalid MCP request: ${cause.message}\n`); }
   }
 });
-process.on('exit', () => driver.kill());
+let shuttingDown = false;
+function stopDriver() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  if (driver.exitCode === null && !driver.killed) driver.kill();
+}
+process.stdin.on('end', stopDriver);
+function stopOnSignal() {
+  stopDriver();
+  if (driver.exitCode !== null) { process.exit(0); return; }
+  const timeout = setTimeout(() => process.exit(1), 2_000);
+  timeout.unref();
+  driver.once('exit', () => { clearTimeout(timeout); process.exit(0); });
+}
+process.once('SIGINT', stopOnSignal);
+process.once('SIGTERM', stopOnSignal);
+process.on('exit', stopDriver);

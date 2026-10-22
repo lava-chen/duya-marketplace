@@ -1,23 +1,23 @@
 {
   "name": "computer-use",
   "id": "com.duya.computer-use",
-  "version": "0.2.0",
-  "description": "Control the local desktop through a plugin-configured native CUA MCP driver.",
+  "version": "0.3.0",
+  "description": "Control the local desktop through the official Cua Driver MCP server.",
   "author": { "name": "DUYA Team", "url": "https://github.com/lava-chen/duya" },
   "license": "MIT",
   "keywords": ["computer-use", "cua", "desktop", "automation"],
   "interface": {
     "displayName": "Computer Use",
-    "shortDescription": "Operate the desktop through this plugin's native CUA MCP service.",
+    "shortDescription": "Operate the desktop through the official Cua Driver MCP service.",
     "category": "automation",
     "icon": "./assets/icon.svg",
     "displayName_zh": "电脑操作",
-    "shortDescription_zh": "通过插件配置的原生 CUA MCP 服务操作桌面。"
+    "shortDescription_zh": "通过官方 Cua Driver MCP 服务操作桌面。"
   },
   "setup": [{
     "id": "driverPath",
     "label": "Cua Driver executable path",
     "type": "path",
-    "required": true
+    "required": false
   }]
 }

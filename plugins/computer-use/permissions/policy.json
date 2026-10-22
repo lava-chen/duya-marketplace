@@ -10,7 +10,8 @@
     "write": ["click", "double_click", "right_click", "drag", "scroll", "type_text", "press_key", "hotkey", "set_value", "bring_to_front"]
   },
   "notes": [
-    "The plugin launches its configured Cua Driver MCP process directly.",
-    "DUYA plugin MCP approval applies. The old Computer Use Host guard does not apply to this independent MCP path."
+    "The plugin launches the configured Cua Driver MCP process directly with the standard, promptless driver permission mode.",
+    "DUYA MCP approval is the consent boundary for write tool calls; this policy declaration does not render a consent prompt by itself.",
+    "The legacy Computer Use Host per-app UIA guard, read-back gate, audit, and revoke controls do not apply to this independent MCP path."
   ]
 }
