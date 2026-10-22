@@ -5,6 +5,13 @@
       "command": "node",
       "args": ["${DUYA_PLUGIN_ROOT}/server.cjs"],
       "env": {
+        "DUYA_BROWSER_EXECUTABLE": "${DUYA_BROWSER_EXECUTABLE:-}",
+        "CHROME_BIN": "${CHROME_BIN:-}",
+        "CHROMIUM_PATH": "${CHROMIUM_PATH:-}",
+        "GOOGLE_CHROME_BIN": "${GOOGLE_CHROME_BIN:-}",
+        "DISPLAY": "${DISPLAY:-}",
+        "XAUTHORITY": "${XAUTHORITY:-}",
+        "WAYLAND_DISPLAY": "${WAYLAND_DISPLAY:-}",
         "DUYA_BROWSER_BRIDGE_PORT": "${DUYA_BROWSER_BRIDGE_PORT:-19826}",
         "DUYA_BROWSER_EXTENSION_ID": "${DUYA_BROWSER_EXTENSION_ID:-}"
       },

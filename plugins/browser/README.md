@@ -22,8 +22,11 @@ and Edge. Browser control does not depend on a DUYA browser daemon.
 The default `Managed Chromium` target launches a private Chromium process for
 this plugin and stores its profile under the plugin data directory. Set
 `CHROME_BIN` or `DUYA_BROWSER_EXECUTABLE` when Chrome or Chromium is not on the
-system `PATH`. Existing clients can still use `DUYA` as an alias for this
-target; it does not select the DUYA desktop browser panel.
+system `PATH`. The MCP server explicitly forwards these browser executable
+variables plus `DISPLAY`, `XAUTHORITY`, and `WAYLAND_DISPLAY` when configured,
+while keeping the rest of the process environment allowlisted. Existing
+clients can still use `DUYA` as an alias for this target; it does not select
+the DUYA desktop browser panel.
 
 ## Chrome and Edge
 

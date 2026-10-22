@@ -1,7 +1,7 @@
 {
   "name": "browser",
   "version": "0.2.0",
-  "description": "通过持久 CUA JavaScript 会话控制 DUYA 内置浏览器及已连接的 Chrome、Edge。",
+  "description": "通过持久 CUA 会话控制插件管理的 Chromium，以及通过扩展连接的 Chrome 和 Edge。",
   "author": {
     "name": "DUYA Team",
     "url": "https://github.com/lava-chen/duya"
@@ -10,12 +10,12 @@
   "keywords": ["browser", "cua", "automation", "mcp"],
   "interface": {
     "displayName": "DUYA Browser",
-    "longDescription": "通过持久化 JavaScript REPL 检查和操作 DUYA 内置浏览器、Chrome 与 Edge 中的标签页。",
-    "shortDescription": "使用 CUA JavaScript 会话操作浏览器标签页。",
+    "longDescription": "通过持久化 JavaScript REPL 检查和操作插件隔离的 Managed Chromium，并在安装 Browser Bridge 扩展后连接 Chrome 与 Edge。",
+    "shortDescription": "使用 CUA 会话控制 Managed Chromium、Chrome 和 Edge。",
     "category": "automation",
     "icon": "./assets/icon.svg",
     "brandColor": "#2EAD33",
     "displayName_zh": "DUYA 浏览器",
-    "shortDescription_zh": "使用 CUA JavaScript 会话操作浏览器标签页。"
+    "shortDescription_zh": "使用 CUA 会话控制 Managed Chromium、Chrome 和 Edge。"
   }
 }
