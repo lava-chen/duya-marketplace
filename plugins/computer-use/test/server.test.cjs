@@ -23,8 +23,21 @@ input.on('line', (line) => {
     result = { tools: [
       { name: 'get_guide', description: 'Read the guide', inputSchema: { type: 'object' } },
       { name: 'click', description: 'Click', inputSchema: { type: 'object' } },
+      { name: 'set_value', description: 'Set value', inputSchema: { type: 'object' } },
+      { name: 'get_desktop_state', description: 'Observe desktop', inputSchema: { type: 'object' } },
+      { name: 'get_window_state', description: 'Observe window', inputSchema: { type: 'object' } },
+      { name: 'list_windows', description: 'List windows', inputSchema: { type: 'object' } },
       { name: 'terminate_process', description: 'Not allowed', inputSchema: { type: 'object' } }
     ] };
+  } else if (request.method === 'tools/call' && ['get_desktop_state', 'list_windows'].includes(request.params.name)) {
+    result = { content: [{ type: 'text', text: JSON.stringify({
+      windows: [
+        { window_id: 1, pid: 101, title: 'Blocked App', process_name: 'blocked.exe' },
+        { window_id: 2, pid: 202, title: 'Allowed App', process_name: 'allowed.exe' }
+      ], active_window_id: 1
+    }) }] };
+  } else if (request.method === 'tools/call' && request.params.name === 'get_window_state') {
+    result = { structuredContent: { snapshot_id: 's12345678', window_title: 'Allowed App', app_name: 'allowed.exe' }, content: [{ type: 'text', text: 'window snapshot s12345678' }] };
   } else if (request.method === 'tools/call') {
     result = { content: [{ type: 'text', text: JSON.stringify({
       name: request.params.name,
@@ -105,7 +118,7 @@ test('uses the configured driver, filters tools, and limits the child environmen
 
   await connect(bridge);
   const catalog = await bridge.request('tools/list');
-  assert.deepEqual(catalog.result.tools.map((tool) => tool.name), ['get_guide', 'click', 'computer_use_revoke', 'computer_use_status']);
+  assert.deepEqual(catalog.result.tools.map((tool) => tool.name), ['get_guide', 'click', 'set_value', 'get_desktop_state', 'get_window_state', 'list_windows', 'computer_use_revoke', 'computer_use_status']);
 
   const result = await bridge.request('tools/call', { name: 'get_guide', arguments: { topic: 'permissions' } });
   const payload = JSON.parse(result.result.content[0].text);
@@ -134,7 +147,7 @@ test('discovers cua-driver from PATH when setup path is empty', { skip: process.
 
   await connect(bridge);
   const catalog = await bridge.request('tools/list');
-  assert.deepEqual(catalog.result.tools.map((tool) => tool.name), ['get_guide', 'click', 'computer_use_revoke', 'computer_use_status']);
+  assert.deepEqual(catalog.result.tools.map((tool) => tool.name), ['get_guide', 'click', 'set_value', 'get_desktop_state', 'get_window_state', 'list_windows', 'computer_use_revoke', 'computer_use_status']);
   bridge.child.stdin.end();
   const [code] = await once(bridge.child, 'exit');
   assert.equal(code, 0);
@@ -147,6 +160,7 @@ test('local revoke control denies writes and app policy errors fail closed', { s
   const bridge = startBridge({
     ...process.env,
     CUA_DRIVER_PATH: driverPath,
+    DUYA_PLUGIN_DATA: path.join(directory, 'plugin-data'),
     COMPUTER_USE_AUDIT_PATH: path.join(directory, 'audit.jsonl'),
     COMPUTER_USE_ACCESS_POLICY: '{bad json',
   });
@@ -164,4 +178,56 @@ test('local revoke control denies writes and app policy errors fail closed', { s
   bridge.child.stdin.end();
   const [code] = await once(bridge.child, 'exit');
   assert.equal(code, 0);
+});
+
+
+test('app guard uses observed active identity and only permits an observed requested window', { skip: process.platform === 'win32' }, async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'computer-use-identity-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const bridge = startBridge({
+    ...process.env,
+    CUA_DRIVER_PATH: await makeDriver(directory),
+    DUYA_PLUGIN_DATA: path.join(directory, 'plugin-data'),
+    COMPUTER_USE_ACCESS_POLICY: JSON.stringify({ default_access: 'deny', allowed_apps: ['allowed.exe'] }),
+  });
+  t.after(() => { if (bridge.child.exitCode === null) bridge.child.kill('SIGKILL'); });
+  await connect(bridge);
+
+  const spoofedTitle = await bridge.request('tools/call', { name: 'click', arguments: { title: 'Allowed App' } });
+  assert.match(spoofedTitle.error.message, /not in the configured allow list/);
+  const observedTarget = await bridge.request('tools/call', { name: 'set_value', arguments: { window_id: 2, value: 'safe' } });
+  assert.ok(observedTarget.result, JSON.stringify(observedTarget));
+  assert.equal(JSON.parse(observedTarget.result.content[0].text).name, 'set_value');
+  const forgedWindow = await bridge.request('tools/call', { name: 'set_value', arguments: { window_id: 999, title: 'Allowed App', value: 'safe' } });
+  assert.match(forgedWindow.error.message, /fresh, observed target window identity/);
+  await bridge.request('tools/call', { name: 'get_window_state', arguments: { pid: 202, window_id: 2 } });
+  const conflictingElementTarget = await bridge.request('tools/call', { name: 'set_value', arguments: { element_token: 's12345678:1', target: { kind: 'window', pid: 101, window_id: 1 }, value: 'safe' } });
+  assert.match(conflictingElementTarget.error.message, /fresh, observed target window identity/);
+  const elementTarget = await bridge.request('tools/call', { name: 'set_value', arguments: { element_token: 's12345678:1', value: 'safe' } });
+  assert.equal(JSON.parse(elementTarget.result.content[0].text).name, 'set_value');
+  bridge.child.stdin.end();
+  const [code] = await once(bridge.child, 'exit');
+  assert.equal(code, 0);
+});
+
+test('revoke ledger is shared across separate plugin MCP processes', { skip: process.platform === 'win32' }, async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'computer-use-shared-revoke-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const driverPath = await makeDriver(directory);
+  const sharedEnv = { ...process.env, CUA_DRIVER_PATH: driverPath, DUYA_PLUGIN_DATA: path.join(directory, 'plugin-data') };
+  const first = startBridge(sharedEnv);
+  const second = startBridge(sharedEnv);
+  t.after(() => { for (const bridge of [first, second]) if (bridge.child.exitCode === null) bridge.child.kill('SIGKILL'); });
+  await Promise.all([connect(first), connect(second)]);
+
+  const revoked = await first.request('tools/call', { name: 'computer_use_revoke', arguments: { duration_seconds: 30 } });
+  assert.match(revoked.result.content[0].text, /"revoked":true/);
+  const status = await second.request('tools/call', { name: 'computer_use_status' });
+  assert.match(status.result.content[0].text, /"revoked":true/);
+  const denied = await second.request('tools/call', { name: 'click', arguments: {} });
+  assert.match(denied.error.message, /revoked/);
+  first.child.stdin.end();
+  second.child.stdin.end();
+  const codes = await Promise.all([once(first.child, 'exit'), once(second.child, 'exit')]);
+  assert.deepEqual(codes.map(([code]) => code), [0, 0]);
 });

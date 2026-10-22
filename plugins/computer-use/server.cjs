@@ -6,6 +6,9 @@
 const { spawn } = require('node:child_process');
 const { checkAppAccess, parsePolicy, validateKeyCombo, validateText, writeTools } = require('./policy.cjs');
 const { audit } = require('./audit.cjs');
+const { parseDriverObservation, selectTargetWindow } = require('./identity.cjs');
+const { getRevocation, revokeFor } = require('./control-state.cjs');
+const tokenWindows = new Map();
 
 // An explicit path makes managed installs predictable; otherwise let the OS
 // resolve the official executable from PATH.
@@ -18,29 +21,78 @@ const allowed = new Set([
   'press_key', 'hotkey', 'set_value', 'bring_to_front', 'verify_state',
 ]);
 const localTools = [
-  { name: 'computer_use_revoke', description: 'Revoke Computer Use input access until the timeout expires or this server restarts.', inputSchema: { type: 'object', properties: { duration_seconds: { type: 'integer', minimum: 1, maximum: 3600 } } } },
+  { name: 'computer_use_revoke', description: 'Revoke Computer Use input access until the shared timeout expires.', inputSchema: { type: 'object', properties: { duration_seconds: { type: 'integer', minimum: 1, maximum: 3600 } } } },
   { name: 'computer_use_status', description: 'Show whether Computer Use input access is currently revoked.', inputSchema: { type: 'object', properties: {} } },
 ];
-let revokedUntil = 0;
-let lastWindowContext = {};
 function getPolicy() {
   try { return parsePolicy(process.env.COMPUTER_USE_ACCESS_POLICY); }
   catch (cause) { throw new Error(`Invalid Computer Use access policy: ${cause.message}`); }
 }
-function rememberContext(value) {
-  if (!value || typeof value !== 'object') return;
-  const walk = (node, depth = 0) => {
-    if (!node || typeof node !== 'object' || depth > 5) return;
-    for (const [key, item] of Object.entries(node)) {
-      if (typeof item === 'string' && /^(title|window_title|app|app_name|process_name|processName|exe)$/i.test(key) && item.trim()) {
-        if (/process|exe/i.test(key)) lastWindowContext.processName = item;
-        else if (/title/i.test(key)) lastWindowContext.title = item;
-        else lastWindowContext.app = item;
-      } else if (item && typeof item === 'object') walk(item, depth + 1);
-    }
-  };
-  walk(value);
+function hasAppRestrictions(policy) {
+  return policy.default_access === 'deny' || policy.allowed_apps.length > 0 || policy.denied_apps.length > 0;
 }
+function rememberWindowSnapshot(args, result) {
+  const body = result?.structuredContent || {};
+  let snapshotId = body.snapshot_id;
+  if (typeof snapshotId !== 'string' && Array.isArray(result?.content)) {
+    const text = result.content.find((block) => block.type === 'text')?.text || '';
+    snapshotId = text.match(/snapshot_id[=: ]+(s[0-9a-f]{8})/i)?.[1];
+  }
+  if (typeof snapshotId !== 'string') return;
+  const windows = parseDriverObservation(result).windows;
+  const window = windows.find((item) => item.id === String(args.window_id) && item.pid === args.pid);
+  const fallback = {
+    id: args.window_id === undefined ? null : String(args.window_id),
+    pid: args.pid ?? null,
+    title: body.window_title || body.title || null,
+    app: body.app_name || body.app || null,
+    processName: body.process_name || body.app_name || null,
+  };
+  const identity = window || fallback;
+  if (identity.id && identity.pid) {
+    tokenWindows.set(snapshotId, identity);
+    if (tokenWindows.size > 512) tokenWindows.delete(tokenWindows.keys().next().value);
+  }
+}
+function tokenWindow(args) {
+  const token = typeof args.element_token === 'string' ? args.element_token : '';
+  const snapshotId = token.match(/^(s[0-9a-f]{8}):\d+$/i)?.[1];
+  return snapshotId ? tokenWindows.get(snapshotId) || null : null;
+}
+async function observeTarget(name, args, policy) {
+  const targetArg = args.target && typeof args.target === 'object' ? args.target : {};
+  const requestedWindow = [args.window_id, args.windowId, args.hwnd, args.target_window_id, args.targetWindowId, targetArg.window_id, targetArg.windowId]
+    .some((value) => (typeof value === 'string' && value.trim()) || (typeof value === 'number' && Number.isFinite(value)));
+  const tokenIdentity = tokenWindow(args);
+  let observation = { windows: [], active: null };
+  try {
+    const result = await driverCall('tools/call', { name: 'get_desktop_state', arguments: {} });
+    observation = parseDriverObservation(result);
+    if (requestedWindow || tokenIdentity || (['set_value', 'bring_to_front'].includes(name) && args.window_title)) {
+      const windows = await driverCall('tools/call', { name: 'list_windows', arguments: {} });
+      const listed = parseDriverObservation(windows);
+      const unique = new Map([...observation.windows, ...listed.windows].map((window) => [`${window.pid ?? ''}:${window.id}:${window.title || ''}`, window]));
+      observation = { windows: [...unique.values()], active: observation.active || listed.active };
+    }
+  } catch (cause) {
+    if (hasAppRestrictions(policy)) throw new Error(`Could not establish a fresh target window identity: ${cause.message}`);
+    return {};
+  }
+  const observedTarget = selectTargetWindow(observation, args, name);
+  let target = observedTarget;
+  if (tokenIdentity) {
+    const targetArg = args.target && typeof args.target === 'object' ? args.target : {};
+    const requestedId = args.window_id ?? args.windowId ?? targetArg.window_id ?? targetArg.windowId;
+    const requestedPid = args.pid ?? targetArg.pid;
+    const conflicts = targetArg.kind === 'desktop' || (requestedId !== undefined && String(requestedId) !== tokenIdentity.id) || (requestedPid !== undefined && requestedPid !== tokenIdentity.pid);
+    const currentlyObserved = observation.windows.some((window) => window.id === tokenIdentity.id && window.pid === tokenIdentity.pid);
+    if (conflicts || !currentlyObserved) target = null;
+    else target = tokenIdentity;
+  }
+  if (!target && hasAppRestrictions(policy)) throw new Error('App access policy requires a fresh, observed target window identity; re-observe the desktop and select a visible window.');
+  return target || {};
+}
+
 const driverEnv = {};
 for (const name of [
   'PATH', 'HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'TMP', 'TEMP',
@@ -139,20 +191,23 @@ async function handle(message) {
     if (message.method === 'tools/call') {
       const name = message.params?.name;
       const args = message.params?.arguments || {};
-      if (name === 'computer_use_status') return reply({ content: [{ type: 'text', text: JSON.stringify({ revoked: Date.now() < revokedUntil, revokedUntil: revokedUntil || null }) }] });
+      if (name === 'computer_use_status') return reply({ content: [{ type: 'text', text: JSON.stringify(await getRevocation()) }] });
       if (name === 'computer_use_revoke') {
         const seconds = Math.max(1, Math.min(3600, Number(args.duration_seconds) || 120));
-        revokedUntil = Date.now() + seconds * 1000;
+        const revokedUntil = await revokeFor(seconds);
         await audit({ action: name, ok: true, args: { duration_seconds: seconds } }).catch(() => {});
-        return reply({ content: [{ type: 'text', text: JSON.stringify({ revoked: true, duration_seconds: seconds }) }] });
+        return reply({ content: [{ type: 'text', text: JSON.stringify({ revoked: true, revokedUntil, duration_seconds: seconds }) }] });
       }
       if (!allowed.has(name) || !available.has(name)) throw new Error(`Computer Use tool unavailable: ${name}`);
       const startedAt = Date.now();
       if (writeTools.has(name)) {
         let denied;
-        if (Date.now() < revokedUntil) denied = 'Computer Use is revoked. Ask the user before resuming.';
+        const revocation = await getRevocation();
+        if (revocation.revoked) denied = 'Computer Use is revoked. Ask the user before resuming.';
         if (!denied) {
-          const appVerdict = checkAppAccess(getPolicy(), { ...lastWindowContext, title: args.window_title || args.title || lastWindowContext.title });
+          const policy = getPolicy();
+          const target = await observeTarget(name, args, policy);
+          const appVerdict = checkAppAccess(policy, target);
           if (!appVerdict.allowed) denied = appVerdict.reason;
         }
         const unsafeKey = !denied && (name === 'press_key' || name === 'hotkey') ? validateKeyCombo(args) : null;
@@ -167,7 +222,7 @@ async function handle(message) {
       }
       try {
         const result = await driverCall('tools/call', { name, arguments: args });
-        if (name === 'get_desktop_state' || name === 'get_window_state' || name === 'list_windows' || name === 'list_apps') rememberContext(result);
+        if (name === 'get_window_state') rememberWindowSnapshot(args, result);
         void audit({ action: name, ok: true, durationMs: Date.now() - startedAt, args }).catch((cause) => process.stderr.write(`Computer Use audit write failed: ${cause.message}\n`));
         return reply(result);
       } catch (cause) {

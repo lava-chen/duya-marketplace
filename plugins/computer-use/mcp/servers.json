@@ -10,7 +10,8 @@
         "CUA_DRIVER_PATH": "${setup.driverPath}",
         "CUA_DRIVER_PERMISSION_MODE": "standard",
         "COMPUTER_USE_ACCESS_POLICY": "${setup.accessPolicyJson}",
-        "COMPUTER_USE_AUDIT_PATH": "${setup.auditPath}"
+        "COMPUTER_USE_AUDIT_PATH": "${setup.auditPath}",
+        "DUYA_PLUGIN_DATA": "${DUYA_PLUGIN_DATA}"
       },
       "envPassthrough": "allowlist",
       "startupTimeoutSec": 30,

@@ -24,4 +24,6 @@ test('access policy environment parser validates shape and defaults explicit con
   assert.deepEqual(parsePolicy('{"allowed_apps":["chrome"]}'), { default_access: 'deny', allowed_apps: ['chrome'], denied_apps: [] });
   assert.throws(() => parsePolicy('{bad'), /JSON/);
   assert.throws(() => parsePolicy('{"allowed_apps":"chrome"}'), /must be JSON/);
+  assert.throws(() => parsePolicy('{"allowed_apps":["",1]}'), /non-empty string pattern arrays/);
+  assert.throws(() => parsePolicy('{"denied_apps":[null]}'), /non-empty string pattern arrays/);
 });

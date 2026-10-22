@@ -59,7 +59,10 @@ function checkAppAccess(policy, context = {}) {
 function parsePolicy(raw) {
   if (!raw) return { default_access: 'allow', allowed_apps: [], denied_apps: [] };
   const value = JSON.parse(raw);
-  if (!value || !['allow', 'deny', undefined].includes(value.default_access) || !Array.isArray(value.allowed_apps || []) || !Array.isArray(value.denied_apps || [])) throw new Error('COMPUTER_USE_ACCESS_POLICY must be JSON with default_access allow|deny and string pattern arrays');
-  return { default_access: value.default_access || 'deny', allowed_apps: value.allowed_apps || [], denied_apps: value.denied_apps || [] };
+  const allowed = value?.allowed_apps ?? [];
+  const denied = value?.denied_apps ?? [];
+  const validPatterns = (patterns) => Array.isArray(patterns) && patterns.every((pattern) => typeof pattern === 'string' && pattern.trim().length > 0);
+  if (!value || !['allow', 'deny', undefined].includes(value.default_access) || !validPatterns(allowed) || !validPatterns(denied)) throw new Error('COMPUTER_USE_ACCESS_POLICY must be JSON with default_access allow|deny and non-empty string pattern arrays');
+  return { default_access: value.default_access || 'deny', allowed_apps: allowed, denied_apps: denied };
 }
 module.exports = { checkAppAccess, parsePolicy, validateKeyCombo, validateText, writeTools };

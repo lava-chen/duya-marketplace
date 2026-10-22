@@ -45,12 +45,13 @@ the driver child.
 as `write`, with DUYA MCP approval required for write calls. The plugin also
 independently blocks selected destructive key combinations and shell-like
 text, evaluates app allow/deny patterns, writes a local JSONL audit, and
-provides `computer_use_revoke` / `computer_use_status` tools. Its revoke timer
-blocks input calls until the timer expires or this MCP server stops. By default,
+provides `computer_use_revoke` / `computer_use_status` tools. Revocation is
+stored in the shared `DUYA_PLUGIN_DATA/computer-use-control.json` ledger, so it
+blocks input across plugin MCP processes until the timer expires. By default,
 app access is allowed unless a deny pattern matches, preserving the legacy
 first-run behavior; setting an explicit policy makes the default deny unless
 `default_access` is set. Configure it in plugin setup under **App access policy JSON** as
-`COMPUTER_USE_ACCESS_POLICY='{"default_access":"deny","allowed_apps":["chrome.exe"],"denied_apps":["incognito"]}'`. Patterns are case-insensitive substrings, or full-string globs using `*` and `?`. App identity is taken from the latest desktop/window observation, or a `window_title` / `title` field on the write call. The optional **Computer Use audit log path** setup field sets the JSONL location; otherwise it is stored under the user's state directory. Typed text and values are redacted in the audit.
+`COMPUTER_USE_ACCESS_POLICY='{"default_access":"deny","allowed_apps":["chrome.exe"],"denied_apps":["incognito"]}'`. Patterns are case-insensitive substrings, or full-string globs using `*` and `?`. Before each input call, the plugin reads a fresh desktop observation and binds the policy check to the requested `pid` / `window_id`, observed active window, or element token from a prior window observation. Titles supplied by the caller cannot substitute for an observed identity. If an explicit policy is configured and the plugin cannot identify the target, the action is refused. The current Cua Driver visible-window output does not consistently identify which window owns desktop-coordinate input; strict app restrictions therefore require an explicit observed window target for those calls. The optional **Computer Use audit log path** setup field sets the JSONL location; otherwise it is stored under the user's state directory. Typed text and values are redacted in the audit.
 
 The Cua Driver provides the platform implementation for accessibility-tree
 inspection and semantic `set_value`; Windows UIA and the OS's own accessibility
