@@ -192,6 +192,9 @@ export interface ConductorAction {
 }
 
 export interface ConductorSnapshot {
+  actions?: ConductorAction[];
+  canUndo?: boolean;
+  canRedo?: boolean;
   canvas: ConductorCanvas;
   widgets: ConductorWidget[];
   actionCursor: number;

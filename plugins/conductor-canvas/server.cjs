@@ -115,7 +115,7 @@ function summary(canvas) {
   return { id: canvas.id, name: canvas.name, description: canvas.description, createdAt: canvas.createdAt, updatedAt: canvas.updatedAt, elementCount: canvas.elements.length + (canvas.widgets || []).length, isFavorite: canvas.isFavorite === true, tags: canvas.tags || [], groupId: canvas.groupId || null, layoutConfig: canvas.layoutConfig || {}, sortOrder: canvas.sortOrder || 0, projectPath: canvas.projectPath || null };
 }
 function snapshot(canvas) {
-  return { canvas: { id: canvas.id, name: canvas.name, description: canvas.description, layoutConfig: canvas.layoutConfig || {}, sortOrder: canvas.sortOrder || 0, projectPath: canvas.projectPath || null, createdAt: canvas.createdAt, updatedAt: canvas.updatedAt, isFavorite: canvas.isFavorite, tags: canvas.tags, groupId: canvas.groupId, legacy: canvas.legacy }, elements: canvas.elements, widgets: canvas.widgets || [], actions: canvas.actions || [], actionCursor: canvas.actionCursor };
+  return { canvas: { id: canvas.id, name: canvas.name, description: canvas.description, layoutConfig: canvas.layoutConfig || {}, sortOrder: canvas.sortOrder || 0, projectPath: canvas.projectPath || null, createdAt: canvas.createdAt, updatedAt: canvas.updatedAt, isFavorite: canvas.isFavorite, tags: canvas.tags, groupId: canvas.groupId, legacy: canvas.legacy }, elements: canvas.elements, widgets: canvas.widgets || [], actions: canvas.actions || [], actionCursor: canvas.actionCursor, canUndo: (canvas.undoStack || []).length > 0, canRedo: (canvas.redoStack || []).length > 0 };
 }
 function findEmpty(canvas, input) {
   const w = Math.max(1, Math.min(WIDTH, finite(input.w, 'w', 5)));
@@ -344,16 +344,60 @@ function actionElement(canvas, elementKind, position, config = {}, extras = {}) 
   return element;
 }
 
+function canvasHistoryState(canvas) {
+  return JSON.parse(JSON.stringify({
+    elements: canvas.elements, widgets: canvas.widgets || [], name: canvas.name,
+    description: canvas.description, layoutConfig: canvas.layoutConfig || {},
+    actionCursor: canvas.actionCursor || 0,
+  }));
+}
+
+function restoreHistoryState(canvas, state) {
+  if (Array.isArray(state)) { canvas.elements = state; return; }
+  canvas.elements = state.elements || [];
+  canvas.widgets = state.widgets || [];
+  for (const key of ['name', 'description', 'layoutConfig', 'actionCursor']) {
+    if (Object.hasOwn(state, key)) canvas[key] = state[key];
+  }
+}
+
+function recordCanvasChange(canvas, before, action, value) {
+  canvas.actions = canvas.actions || [];
+  const actionId = Math.max(canvas.actionCursor || 0, ...canvas.actions.map((entry) => Number(entry.id) || 0)) + 1;
+  canvas.undoStack = canvas.undoStack || [];
+  canvas.undoStack.push({ ...before, appliedActionId: actionId });
+  if (canvas.undoStack.length > 100) canvas.undoStack.shift();
+  canvas.redoStack = [];
+  canvas.actionCursor = actionId;
+  canvas.actions.push({ id: actionId, canvasId: canvas.id, widgetId: action.widgetId || null,
+    actor: action.actor || 'agent', actionType: action.action, payload: { ...action },
+    resultPatch: value, mergedFrom: null, reversible: 1, ts: Date.now(), undoneAt: null });
+  if (canvas.actions.length > 1000) canvas.actions.splice(0, canvas.actions.length - 1000);
+}
+
 function applyConductorAction(store, action) {
   if (!action || typeof action !== 'object' || typeof action.action !== 'string') fail('action must be a Conductor action object.');
   if (action.actor !== undefined && !['user', 'agent', 'system'].includes(action.actor)) fail('actor must be user, agent, or system.');
   const canvas = canvasById(store, action.canvasId);
-  const before = { elements: JSON.parse(JSON.stringify(canvas.elements)), widgets: JSON.parse(JSON.stringify(canvas.widgets || [])) };
+  const before = canvasHistoryState(canvas);
   let value;
   const find = (id) => canvas.elements.find((element) => element.id === id);
   const requireElement = (id) => find(id) || fail(`Element not found: ${id}`);
   const positionPatch = (element, position) => { element.position = freeformPosition({ ...element.position, ...position }); element.updatedAt = Date.now(); };
   switch (action.action) {
+    case 'canvas.describe_context': {
+      const elements = canvas.elements.map((element) => ({ ...elementSummary(element),
+        elementKind: element.elementKind, ...(action.includeConfig ? { config: element.config } : {}) }));
+      const overlaps = [];
+      const nodes = canvas.elements.filter((element) => element.nativeKind !== 'connector' && element.type !== 'connector');
+      for (let index = 0; index < nodes.length; index++) for (let other = index + 1; other < nodes.length; other++) {
+        const a = nodes[index].position; const b = nodes[other].position;
+        if (a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y) overlaps.push([nodes[index].id, nodes[other].id]);
+      }
+      return { success: true, result: { canvasId: canvas.id, count: elements.length, elements, overlaps,
+        markdown: [`# Canvas context: ${canvas.name}`, canvas.description || '',
+          'Coordinates: 40 × 30 grid units; origin top-left.', ...elements.map((element) => JSON.stringify(element))].join('\n') } };
+    }
     case 'canvas.rename':
       canvas.name = String(action.name || '').trim().slice(0, 100) || fail('name is required.'); value = { canvas: summary(canvas) }; break;
     case 'widget.create': {
@@ -397,6 +441,35 @@ function applyConductorAction(store, action) {
       if (!String(action.elementKind || '').trim()) fail('elementKind is required.');
       const element = actionElement(canvas, String(action.elementKind), action.position, action.config || {}, { vizSpec: action.vizSpec || null, ...(action.permissions ? { permissions: action.permissions } : {}) }); value = { element }; break;
     }
+    case 'element.batch_create': {
+      const operations = action.operations;
+      if (!Array.isArray(operations) || !operations.length || operations.length > 500) fail('operations must contain 1 to 500 create/connect operations.');
+      const refs = new Map(); const elements = [];
+      for (const op of operations) {
+        if (!op || !['create', 'connect'].includes(op.op)) fail('Batch operations must be create or connect.');
+        if (op.op === 'create' && op.ref !== undefined) {
+          if (typeof op.ref !== 'string' || !op.ref || refs.has(op.ref)) fail('Batch refs must be unique non-empty strings.');
+          refs.set(op.ref, randomUUID());
+        }
+      }
+      for (const op of operations.filter((item) => item.op === 'create')) {
+        if (typeof op.kind !== 'string' || !op.kind.trim()) fail('Batch create requires kind.');
+        elements.push(actionElement(canvas, op.kind, op.position, op.config || {}, {
+          ...(op.ref ? { id: refs.get(op.ref) } : {}), sourceCode: op.sourceCode || null, vizSpec: op.vizSpec || null,
+        }));
+      }
+      const resolve = (id) => { const resolved = refs.get(id) || id; requireElement(resolved); return resolved; };
+      for (const op of operations.filter((item) => item.op === 'connect')) {
+        const sourceId = resolve(op.source); const targetId = resolve(op.target);
+        elements.push(actionElement(canvas, 'native/connector', { x: 0, y: 0, w: 0, h: 0 }, {
+          source: { nodeId: sourceId }, target: { nodeId: targetId }, sourceId, targetId,
+          routingMode: op.routingMode === 'curve' ? 'curve' : 'elbow', curvature: op.curvature ?? 0.4,
+          style: op.style || {}, label: op.label || '',
+          ...Object.fromEntries(['strokeStyle', 'lineWidth', 'color', 'startMarker', 'endMarker'].filter((key) => op[key] !== undefined).map((key) => [key, op[key]])),
+        }));
+      }
+      value = { elements, refs: Object.fromEntries(refs) }; break;
+    }
     case 'element.create_native': {
       const type = String(action.nodeType || '').replace(/^native\//, '');
       const content = action.content && typeof action.content === 'object' ? action.content : {};
@@ -436,6 +509,25 @@ function applyConductorAction(store, action) {
       const layout = Array.isArray(action.layout) ? action.layout : [];
       layout.forEach((item) => { const element = requireElement(item.elementId); positionPatch(element, item.position || {}); }); value = { updated: layout.length }; break;
     }
+    case 'element.align': {
+      const element = requireElement(action.elementId); const margin = finite(action.margin, 'margin', 20) / 80;
+      const { w, h } = element.position;
+      const positions = { 'top-left': [margin, margin], 'top-right': [WIDTH - w - margin, margin],
+        'bottom-left': [margin, HEIGHT - h - margin], 'bottom-right': [WIDTH - w - margin, HEIGHT - h - margin],
+        center: [(WIDTH - w) / 2, (HEIGHT - h) / 2] };
+      if (!Object.hasOwn(positions, action.alignment)) fail('Unknown element alignment.');
+      const [x, y] = positions[action.alignment]; positionPatch(element, { x, y }); value = { element }; break;
+    }
+    case 'element.layout_grid': {
+      if (!Array.isArray(action.elementIds) || !action.elementIds.length) fail('elementIds is required.');
+      const columns = finite(action.columns, 'columns', 3);
+      if (!Number.isSafeInteger(columns) || columns < 1) fail('columns must be a positive integer.');
+      const gap = finite(action.gap, 'gap', 20); const w = finite(action.cellWidth, 'cellWidth', 250); const h = finite(action.cellHeight, 'cellHeight', 150);
+      if (gap < 0 || w <= 0 || h <= 0) fail('Grid dimensions must be positive and gap non-negative.');
+      const elements = action.elementIds.map(requireElement);
+      elements.forEach((element, index) => positionPatch(element, { x: (index % columns) * (w + gap) + gap, y: Math.floor(index / columns) * (h + gap) + gap, w, h }));
+      value = { layout: elements.map((element) => ({ elementId: element.id, position: element.position })) }; break;
+    }
     case 'connector.create': {
       const sourceId = typeof action.source === 'string' ? action.source : action.source?.nodeId;
       const targetId = typeof action.target === 'string' ? action.target : action.target?.nodeId;
@@ -461,11 +553,8 @@ function applyConductorAction(store, action) {
     }
     default: fail(`Unsupported Conductor action: ${action.action}`);
   }
-  canvas.undoStack = canvas.undoStack || []; canvas.undoStack.push(before); if (canvas.undoStack.length > 100) canvas.undoStack.shift(); canvas.redoStack = [];
-  canvas.updatedAt = now(); canvas.actionCursor = (canvas.actionCursor || 0) + 1;
-  canvas.actions = canvas.actions || [];
-  canvas.actions.push({ id: canvas.actionCursor, canvasId: canvas.id, widgetId: action.widgetId || null, actor: action.actor || 'agent', actionType: action.action, payload: { ...action }, resultPatch: value, mergedFrom: null, reversible: 1, ts: Date.now(), undoneAt: null });
-  if (canvas.actions.length > 1000) canvas.actions.splice(0, canvas.actions.length - 1000);
+  recordCanvasChange(canvas, before, action, value);
+  canvas.updatedAt = now();
   writeStore(store);
   return { success: true, result: value, snapshot: snapshot(canvas) };
 }
@@ -592,7 +681,7 @@ async function callUnlocked(name, input) {
     result = { importedCanvases: canvases.length, importedElements: canvases.reduce((sum, canvas) => sum + canvas.elements.length, 0), importedAssets: assetIds.size, importedProjectDatabases: importedProjectDatabases.length, currentCanvasId: store.currentCanvasId };
   } else {
     const canvas = canvasById(store, input.canvasId);
-    const beforeElements = JSON.parse(JSON.stringify(canvas.elements));
+    const beforeElements = canvasHistoryState(canvas);
     switch (name) {
       case 'canvas_get_snapshot':
       case 'canvas_export': result = snapshotWithAssets(canvas); break;
@@ -633,19 +722,25 @@ async function callUnlocked(name, input) {
       case 'canvas_delete_element': { const element = elementById(canvas, input.elementId); canvas.elements = canvas.elements.filter((item) => item.id !== element.id && !(item.type === 'connector' && (item.config?.sourceId === element.id || item.config?.targetId === element.id))); result = { deleted: element.id }; break; }
       case 'canvas_undo': {
         if (!canvas.undoStack || !canvas.undoStack.length) fail('There is no canvas change to undo.');
-        canvas.redoStack = canvas.redoStack || []; canvas.redoStack.push({ elements: JSON.parse(JSON.stringify(canvas.elements)), widgets: JSON.parse(JSON.stringify(canvas.widgets || [])) });
         const previous = canvas.undoStack.pop();
-        if (Array.isArray(previous)) canvas.elements = previous;
-        else { canvas.elements = previous.elements || []; canvas.widgets = previous.widgets || []; }
-        result = { undone: true }; break;
+        const actionId = previous.appliedActionId || canvas.actionCursor;
+        canvas.redoStack = canvas.redoStack || [];
+        canvas.redoStack.push({ ...canvasHistoryState(canvas), appliedActionId: actionId });
+        restoreHistoryState(canvas, previous);
+        const action = (canvas.actions || []).find((entry) => entry.id === actionId);
+        if (action) action.undoneAt = Date.now();
+        result = { undone: true, inverted: true, actionId, canUndo: canvas.undoStack.length > 0, canRedo: true }; break;
       }
       case 'canvas_redo': {
         if (!canvas.redoStack || !canvas.redoStack.length) fail('There is no canvas change to redo.');
-        canvas.undoStack = canvas.undoStack || []; canvas.undoStack.push({ elements: JSON.parse(JSON.stringify(canvas.elements)), widgets: JSON.parse(JSON.stringify(canvas.widgets || [])) });
         const next = canvas.redoStack.pop();
-        if (Array.isArray(next)) canvas.elements = next;
-        else { canvas.elements = next.elements || []; canvas.widgets = next.widgets || []; }
-        result = { redone: true }; break;
+        const actionId = next.appliedActionId || next.actionCursor;
+        canvas.undoStack = canvas.undoStack || [];
+        canvas.undoStack.push({ ...canvasHistoryState(canvas), appliedActionId: actionId });
+        restoreHistoryState(canvas, next);
+        const action = (canvas.actions || []).find((entry) => entry.id === actionId);
+        if (action) action.undoneAt = null;
+        result = { redone: true, patch: true, actionId, canUndo: true, canRedo: canvas.redoStack.length > 0 }; break;
       }
       case 'canvas_find_empty_space': result = findEmpty(canvas, input); break;
       case 'canvas_auto_layout': {
@@ -661,13 +756,10 @@ async function callUnlocked(name, input) {
       default: fail(`Unknown Canvas tool: ${name}`);
     }
     if (mutatingTools.has(name)) {
-      canvas.undoStack = canvas.undoStack || [];
-      canvas.undoStack.push(beforeElements);
-      if (canvas.undoStack.length > 100) canvas.undoStack.shift();
-      canvas.redoStack = [];
+      recordCanvasChange(canvas, beforeElements, { ...input, action: name }, result);
     }
     if (mutatingTools.has(name) || name === 'canvas_undo' || name === 'canvas_redo') {
-      canvas.updatedAt = now(); canvas.actionCursor += 1; writeStore(store);
+      canvas.updatedAt = now(); writeStore(store);
     }
   }
   return result;

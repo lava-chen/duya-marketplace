@@ -427,6 +427,9 @@ export const useConductorStore = create<ConductorState>((set, get) => ({
     const elements = (snapshot as any).elements ?? [];
     set({
       snapshot,
+      actions: snapshot.actions ?? [],
+      canUndo: snapshot.canUndo === true,
+      canRedo: snapshot.canRedo === true,
       widgets: snapshot.widgets,
       elements,
     });
@@ -865,7 +868,7 @@ export const useConductorStore = create<ConductorState>((set, get) => ({
         set({ uiStatus: "error", syncStatusText: "Failed to revert action" });
         get().setUiError("Undo failed");
       }
-      set({ canUndo: false, canRedo: true });
+      if (result.success) set({ canUndo: result.canUndo === true, canRedo: result.canRedo === true });
     } catch {
       set({ uiStatus: "error", syncStatusText: "Failed to revert action" });
       get().setUiError("Undo failed");
@@ -893,7 +896,7 @@ export const useConductorStore = create<ConductorState>((set, get) => ({
         set({ uiStatus: "error", syncStatusText: "Failed to reapply action" });
         get().setUiError("Redo failed");
       }
-      set({ canUndo: true, canRedo: false });
+      if (result.success) set({ canUndo: result.canUndo === true, canRedo: result.canRedo === true });
     } catch {
       set({ uiStatus: "error", syncStatusText: "Failed to reapply action" });
       get().setUiError("Redo failed");

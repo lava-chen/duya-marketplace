@@ -37,7 +37,7 @@ function normalizeSnapshot(raw: PluginCanvas): ConductorSnapshot {
     position: { zIndex: 0, rotation: 0, ...element.position },
   }));
   const widgets = Array.isArray(raw.widgets) ? raw.widgets as ConductorWidget[] : [];
-  return { canvas, widgets, actionCursor: Number(raw.actionCursor) || 0, elements } as unknown as ConductorSnapshot;
+  return { canvas, widgets, actions: Array.isArray(raw.actions) ? raw.actions : [], canUndo: raw.canUndo === true, canRedo: raw.canRedo === true, actionCursor: Number(raw.actionCursor) || 0, elements } as unknown as ConductorSnapshot;
 }
 
 export async function listCanvases(): Promise<ConductorCanvas[]> {
@@ -88,12 +88,12 @@ export async function addWidget(canvasId: string, kind: string, type: string, da
 export async function undoAction(canvasId: string): Promise<any> {
   const result = await pluginBridge.call<{ undone: boolean; [key: string]: unknown }>("canvas_undo", { canvasId });
   window.dispatchEvent(new CustomEvent("plugin-canvas:changed", { detail: canvasId }));
-  return { success: result.undone === true };
+  return { ...result, success: result.undone === true };
 }
 export async function redoAction(canvasId: string): Promise<any> {
   const result = await pluginBridge.call<{ redone: boolean; [key: string]: unknown }>("canvas_redo", { canvasId });
   window.dispatchEvent(new CustomEvent("plugin-canvas:changed", { detail: canvasId }));
-  return { success: result.redone === true };
+  return { ...result, success: result.redone === true };
 }
 export async function createElement(canvasId: string, elementKind: string, position: { x: number; y: number; w: number; h: number; zIndex: number; rotation: number }, vizSpec?: Record<string, unknown> | null, config?: Record<string, unknown>): Promise<any> {
   return executeAction({ action: "element.create", canvasId, elementKind: elementKind as any, position, vizSpec: vizSpec as any, config });

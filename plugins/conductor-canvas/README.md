@@ -61,7 +61,11 @@ independently installable.
 - `canvas_find_empty_space`, `canvas_auto_layout`, `canvas_apply_layout`:
   arrange elements.
 - `canvas_undo`, `canvas_redo`, and `canvas_get_knowledge`: reverse edits and
-  return layout guidance.
+  return layout guidance. Undo/redo restores element and widget content plus
+  canvas metadata, action cursor, history state, and available undo/redo steps.
+- `canvas_execute_action` also supports atomic `element.batch_create` operations
+  with named references and connectors, `element.align`, `element.layout_grid`,
+  and read-only `canvas.describe_context` for the agent.
 
 Canvas data is stored in `${DUYA_PLUGIN_DATA}/canvases.json`, uploaded assets
 in `${DUYA_PLUGIN_DATA}/assets`, settings (including provider credentials) in
@@ -86,7 +90,7 @@ exports the project database rows from `.duya/database.sqlite`. The importer
 preserves source, property, record, and view IDs and the canvas project link,
 preserves original element fields and connector endpoint objects, remaps
 bundled assets into plugin storage, and retains widgets and action history.
-Former dynamic widget code is retained as data and is not executed. Keep the
+Dynamic widget source is rendered inside the editor's isolated widget sandbox. Keep the
 source databases and asset directory until the migrated copy has been reviewed.
 
 Project database imports merge by stable row IDs or table keys, so importing
