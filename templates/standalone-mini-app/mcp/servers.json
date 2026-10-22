@@ -1,0 +1,9 @@
+{
+  "servers": [{
+    "name": "notes",
+    "command": "node",
+    "args": ["${DUYA_PLUGIN_ROOT}/server.cjs"],
+    "env": { "NOTES_STORE": "${DUYA_PLUGIN_DATA}/notes.json" },
+    "envPassthrough": "allowlist"
+  }]
+}

@@ -1,0 +1,30 @@
+{
+  "name": "notes-mini-app",
+  "id": "com.example.notes-mini-app",
+  "version": "0.1.0",
+  "description": "A standalone Mini App and MCP server example.",
+  "author": { "name": "Plugin Author" },
+  "license": "MIT",
+  "interface": {
+    "displayName": "Notes Mini App",
+    "shortDescription": "An example plugin-owned desktop App."
+  },
+  "extensions": {
+    "com.duya.client": {
+      "apps": [{
+        "appId": "notes",
+        "entry": "apps/notes/index.html",
+        "runtime": "standalone",
+        "requiredCapabilities": ["notes.data"],
+        "capabilityTools": [{
+          "capability": "notes.data",
+          "tools": [
+            { "serverName": "notes", "toolName": "notes_list" },
+            { "serverName": "notes", "toolName": "notes_add" }
+          ]
+        }],
+        "stateSchemaVersion": 1
+      }]
+    }
+  }
+}
