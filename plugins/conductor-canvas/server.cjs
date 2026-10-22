@@ -50,8 +50,8 @@ async function withStoreLock(action) {
   }
   try { return await action(); }
   finally {
-    fs.closeSync(fd);
-    fs.unlinkSync(lockPath);
+    try { fs.closeSync(fd); }
+    finally { fs.unlinkSync(lockPath); }
   }
 }
 
