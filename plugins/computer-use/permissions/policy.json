@@ -6,12 +6,12 @@
     { "name": "computer-use.cua", "description": "Use the configured native CUA MCP driver." }
   ],
   "tiers": {
-    "read": ["get_guide", "check_permissions", "get_desktop_state", "get_window_state", "list_windows", "list_apps", "get_accessibility_tree", "get_screen_size", "verify_state"],
-    "write": ["click", "double_click", "right_click", "drag", "scroll", "type_text", "press_key", "hotkey", "set_value", "bring_to_front"]
+    "read": ["get_guide", "check_permissions", "get_desktop_state", "get_window_state", "list_windows", "list_apps", "get_accessibility_tree", "get_screen_size", "verify_state", "computer_use_status"],
+    "write": ["click", "double_click", "right_click", "drag", "scroll", "type_text", "press_key", "hotkey", "set_value", "bring_to_front", "computer_use_revoke"]
   },
   "notes": [
     "The plugin launches the configured Cua Driver MCP process directly with the standard, promptless driver permission mode.",
     "DUYA MCP approval is the consent boundary for write tool calls; this policy declaration does not render a consent prompt by itself.",
-    "The legacy Computer Use Host per-app UIA guard, read-back gate, audit, and revoke controls do not apply to this independent MCP path."
+    "The plugin enforces configured app patterns, blocked input patterns, and a local revoke timer; audit JSONL records action metadata with typed text redacted."
   ]
 }

@@ -4,6 +4,8 @@
 // This plugin owns the MCP tool boundary. A platform-native Cua Driver is a
 // subprocess, but only this reviewed desktop-tool subset reaches the agent.
 const { spawn } = require('node:child_process');
+const { checkAppAccess, parsePolicy, validateKeyCombo, validateText, writeTools } = require('./policy.cjs');
+const { audit } = require('./audit.cjs');
 
 // An explicit path makes managed installs predictable; otherwise let the OS
 // resolve the official executable from PATH.
@@ -15,6 +17,30 @@ const allowed = new Set([
   'click', 'double_click', 'right_click', 'drag', 'scroll', 'type_text',
   'press_key', 'hotkey', 'set_value', 'bring_to_front', 'verify_state',
 ]);
+const localTools = [
+  { name: 'computer_use_revoke', description: 'Revoke Computer Use input access until the timeout expires or this server restarts.', inputSchema: { type: 'object', properties: { duration_seconds: { type: 'integer', minimum: 1, maximum: 3600 } } } },
+  { name: 'computer_use_status', description: 'Show whether Computer Use input access is currently revoked.', inputSchema: { type: 'object', properties: {} } },
+];
+let revokedUntil = 0;
+let lastWindowContext = {};
+function getPolicy() {
+  try { return parsePolicy(process.env.COMPUTER_USE_ACCESS_POLICY); }
+  catch (cause) { throw new Error(`Invalid Computer Use access policy: ${cause.message}`); }
+}
+function rememberContext(value) {
+  if (!value || typeof value !== 'object') return;
+  const walk = (node, depth = 0) => {
+    if (!node || typeof node !== 'object' || depth > 5) return;
+    for (const [key, item] of Object.entries(node)) {
+      if (typeof item === 'string' && /^(title|window_title|app|app_name|process_name|processName|exe)$/i.test(key) && item.trim()) {
+        if (/process|exe/i.test(key)) lastWindowContext.processName = item;
+        else if (/title/i.test(key)) lastWindowContext.title = item;
+        else lastWindowContext.app = item;
+      } else if (item && typeof item === 'object') walk(item, depth + 1);
+    }
+  };
+  walk(value);
+}
 const driverEnv = {};
 for (const name of [
   'PATH', 'HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'TMP', 'TEMP',
@@ -108,12 +134,46 @@ async function handle(message) {
     if (message.method === 'ping') return reply({});
     if (message.method === 'tools/list') {
       const catalog = await driverCall('tools/list');
-      return reply({ tools: (catalog.tools || []).filter((tool) => allowed.has(tool.name)) });
+      return reply({ tools: [...(catalog.tools || []).filter((tool) => allowed.has(tool.name)), ...localTools] });
     }
     if (message.method === 'tools/call') {
       const name = message.params?.name;
+      const args = message.params?.arguments || {};
+      if (name === 'computer_use_status') return reply({ content: [{ type: 'text', text: JSON.stringify({ revoked: Date.now() < revokedUntil, revokedUntil: revokedUntil || null }) }] });
+      if (name === 'computer_use_revoke') {
+        const seconds = Math.max(1, Math.min(3600, Number(args.duration_seconds) || 120));
+        revokedUntil = Date.now() + seconds * 1000;
+        await audit({ action: name, ok: true, args: { duration_seconds: seconds } }).catch(() => {});
+        return reply({ content: [{ type: 'text', text: JSON.stringify({ revoked: true, duration_seconds: seconds }) }] });
+      }
       if (!allowed.has(name) || !available.has(name)) throw new Error(`Computer Use tool unavailable: ${name}`);
-      return reply(await driverCall('tools/call', { name, arguments: message.params?.arguments || {} }));
+      const startedAt = Date.now();
+      if (writeTools.has(name)) {
+        let denied;
+        if (Date.now() < revokedUntil) denied = 'Computer Use is revoked. Ask the user before resuming.';
+        if (!denied) {
+          const appVerdict = checkAppAccess(getPolicy(), { ...lastWindowContext, title: args.window_title || args.title || lastWindowContext.title });
+          if (!appVerdict.allowed) denied = appVerdict.reason;
+        }
+        const unsafeKey = !denied && (name === 'press_key' || name === 'hotkey') ? validateKeyCombo(args) : null;
+        if (unsafeKey) denied = `Input blocked by safety policy: ${unsafeKey}`;
+        const text = name === 'type_text' ? args.text : name === 'set_value' ? args.value : null;
+        const unsafeText = !denied && validateText(text);
+        if (unsafeText) denied = `Input blocked by safety policy: ${unsafeText}`;
+        if (denied) {
+          void audit({ action: name, ok: false, errorCode: 'POLICY_DENIED', durationMs: Date.now() - startedAt, args }).catch((cause) => process.stderr.write(`Computer Use audit write failed: ${cause.message}\n`));
+          throw new Error(denied);
+        }
+      }
+      try {
+        const result = await driverCall('tools/call', { name, arguments: args });
+        if (name === 'get_desktop_state' || name === 'get_window_state' || name === 'list_windows' || name === 'list_apps') rememberContext(result);
+        void audit({ action: name, ok: true, durationMs: Date.now() - startedAt, args }).catch((cause) => process.stderr.write(`Computer Use audit write failed: ${cause.message}\n`));
+        return reply(result);
+      } catch (cause) {
+        void audit({ action: name, ok: false, errorCode: 'DRIVER_ERROR', durationMs: Date.now() - startedAt, args }).catch((auditCause) => process.stderr.write(`Computer Use audit write failed: ${auditCause.message}\n`));
+        throw cause;
+      }
     }
     return error(message.id, 'Method not found', -32601);
   } catch (cause) { return error(message.id, cause.message || String(cause)); }

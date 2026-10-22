@@ -105,7 +105,7 @@ test('uses the configured driver, filters tools, and limits the child environmen
 
   await connect(bridge);
   const catalog = await bridge.request('tools/list');
-  assert.deepEqual(catalog.result.tools.map((tool) => tool.name), ['get_guide', 'click']);
+  assert.deepEqual(catalog.result.tools.map((tool) => tool.name), ['get_guide', 'click', 'computer_use_revoke', 'computer_use_status']);
 
   const result = await bridge.request('tools/call', { name: 'get_guide', arguments: { topic: 'permissions' } });
   const payload = JSON.parse(result.result.content[0].text);
@@ -134,7 +134,33 @@ test('discovers cua-driver from PATH when setup path is empty', { skip: process.
 
   await connect(bridge);
   const catalog = await bridge.request('tools/list');
-  assert.deepEqual(catalog.result.tools.map((tool) => tool.name), ['get_guide', 'click']);
+  assert.deepEqual(catalog.result.tools.map((tool) => tool.name), ['get_guide', 'click', 'computer_use_revoke', 'computer_use_status']);
+  bridge.child.stdin.end();
+  const [code] = await once(bridge.child, 'exit');
+  assert.equal(code, 0);
+});
+
+test('local revoke control denies writes and app policy errors fail closed', { skip: process.platform === 'win32' }, async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'computer-use-revoke-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const driverPath = await makeDriver(directory);
+  const bridge = startBridge({
+    ...process.env,
+    CUA_DRIVER_PATH: driverPath,
+    COMPUTER_USE_AUDIT_PATH: path.join(directory, 'audit.jsonl'),
+    COMPUTER_USE_ACCESS_POLICY: '{bad json',
+  });
+  t.after(() => { if (bridge.child.exitCode === null) bridge.child.kill('SIGKILL'); });
+
+  await connect(bridge);
+  const deniedByInvalidPolicy = await bridge.request('tools/call', { name: 'click', arguments: {} });
+  assert.match(deniedByInvalidPolicy.error.message, /Invalid Computer Use access policy/);
+  const revoked = await bridge.request('tools/call', { name: 'computer_use_revoke', arguments: { duration_seconds: 30 } });
+  assert.match(revoked.result.content[0].text, /"revoked":true/);
+  const deniedByRevoke = await bridge.request('tools/call', { name: 'click', arguments: {} });
+  assert.match(deniedByRevoke.error.message, /revoked/);
+  const status = await bridge.request('tools/call', { name: 'computer_use_status' });
+  assert.match(status.result.content[0].text, /"revoked":true/);
   bridge.child.stdin.end();
   const [code] = await once(bridge.child, 'exit');
   assert.equal(code, 0);

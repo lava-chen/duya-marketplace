@@ -1,11 +1,20 @@
 {
-  "servers": [{
-    "name": "computer_cua",
-    "command": "node",
-    "args": ["${DUYA_PLUGIN_ROOT}/server.cjs"],
-    "env": { "CUA_DRIVER_PATH": "${setup.driverPath}", "CUA_DRIVER_PERMISSION_MODE": "standard" },
-    "envPassthrough": "allowlist",
-    "startupTimeoutSec": 30,
-    "toolTimeoutSec": 60
-  }]
+  "servers": [
+    {
+      "name": "computer_cua",
+      "command": "node",
+      "args": [
+        "${DUYA_PLUGIN_ROOT}/server.cjs"
+      ],
+      "env": {
+        "CUA_DRIVER_PATH": "${setup.driverPath}",
+        "CUA_DRIVER_PERMISSION_MODE": "standard",
+        "COMPUTER_USE_ACCESS_POLICY": "${setup.accessPolicyJson}",
+        "COMPUTER_USE_AUDIT_PATH": "${setup.auditPath}"
+      },
+      "envPassthrough": "allowlist",
+      "startupTimeoutSec": 30,
+      "toolTimeoutSec": 60
+    }
+  ]
 }

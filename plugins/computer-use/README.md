@@ -42,14 +42,21 @@ plugin's MCP lifecycle; closing the MCP input or stopping the plugin terminates
 the driver child.
 
 `permissions/policy.json` declares observation tools as `read` and input tools
-as `write`, with DUYA MCP approval required for write calls. The driver runs in
-its `standard` mode, which does not display its own consent prompt. DUYA's MCP
-approval flow is therefore the approval boundary for each write tool call; the
-policy declaration alone does not create a prompt. This adapter does not
-provide the legacy Host's per-app UIA guard, separate read-back gate, or audit
-and revoke controls. To stop access, disable/uninstall this plugin or stop its
-MCP server, and revoke any OS accessibility, screen-capture, or input grants in
-the OS privacy settings.
+as `write`, with DUYA MCP approval required for write calls. The plugin also
+independently blocks selected destructive key combinations and shell-like
+text, evaluates app allow/deny patterns, writes a local JSONL audit, and
+provides `computer_use_revoke` / `computer_use_status` tools. Its revoke timer
+blocks input calls until the timer expires or this MCP server stops. By default,
+app access is allowed unless a deny pattern matches, preserving the legacy
+first-run behavior; setting an explicit policy makes the default deny unless
+`default_access` is set. Configure it in plugin setup under **App access policy JSON** as
+`COMPUTER_USE_ACCESS_POLICY='{"default_access":"deny","allowed_apps":["chrome.exe"],"denied_apps":["incognito"]}'`. Patterns are case-insensitive substrings, or full-string globs using `*` and `?`. App identity is taken from the latest desktop/window observation, or a `window_title` / `title` field on the write call. The optional **Computer Use audit log path** setup field sets the JSONL location; otherwise it is stored under the user's state directory. Typed text and values are redacted in the audit.
+
+The Cua Driver provides the platform implementation for accessibility-tree
+inspection and semantic `set_value`; Windows UIA and the OS's own accessibility
+and input permissions are handled by that independent driver. There is no
+DUYA Host UIA probe, capture store, overlay, or executor dependency in this
+plugin. To revoke OS grants, use the operating system's privacy settings.
 
 ## Use
 
