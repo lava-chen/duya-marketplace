@@ -25,8 +25,9 @@ without references to Canvas in the host implementation.
 - Port the original editor's behavior and reusable domain logic into this
   package, adapting dependencies on DUYA renderer state and IPC to the generic
   App bridge and plugin-owned MCP service.
-- Provide plugin-owned storage and asset handling with a documented schema
-  migration path. The current JSON store covers only the prototype model.
+- Expand plugin-owned storage and asset handling beyond the current JSON
+  document store and local upload/download path. Existing DUYA asset files
+  still need an explicit copy path.
 - Preserve the original feature set, including rich native elements,
   connections, presentation, workbench/data views, undo/redo, and integration
   between the visual editor and agent tool calls.

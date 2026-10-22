@@ -107,7 +107,7 @@
         <div class="title-wrap"><div class="title" id="canvasTitle">Conductor Canvas</div><div class="subtitle" id="canvasSubtitle">插件 Mini App</div></div>
         <button class="btn" id="undo" title="撤销">↶</button><button class="btn" id="redo" title="重做">↷</button><button class="btn" id="importCanvas">导入</button><button class="btn" id="exportCanvas">导出</button><button class="btn" id="renameCanvas">重命名</button><button class="btn" id="deleteCanvas">删除画布</button><button class="btn" id="refresh">↻ 刷新</button><input id="importFile" type="file" accept="application/json,.json" hidden /><span class="divider"></span>
         <select class="tool-select" id="addKind" title="添加元素"><option value="shape">便笺</option><option value="text">文本</option><option value="document">文档</option><option value="table">表格</option><option value="link">链接</option><option value="image">图片</option><option value="file">文件</option></select>
-        <button class="btn" id="autoLayout">自动排布</button><button class="btn" id="connectElements">连接所选</button><button class="btn" id="groupElements">组合</button><button class="btn primary" id="addElement">＋ 添加</button><button class="btn" id="presentation">演示</button>
+        <button class="btn" id="autoLayout">自动排布</button><button class="btn" id="connectElements">连接所选</button><button class="btn" id="groupElements">组合</button><button class="btn" id="uploadAsset">上传文件</button><input id="assetFile" type="file" hidden /><button class="btn primary" id="addElement">＋ 添加</button><button class="btn" id="presentation">演示</button>
         <span class="divider"></span><button class="btn" id="zoomOut">−</button><button class="btn" id="zoomIn">＋</button>
       </header>
       <section class="board-wrap" id="boardWrap"><div class="board" id="board"><div class="board-grid"></div><div class="empty" id="emptyState">连接插件服务以打开 Conductor 画布</div></div></section>
@@ -123,7 +123,7 @@
   (function () {
     "use strict";
     var CHANNEL = "duya.plugin-app";
-    var state = { bound: false, tools: [], canvases: [], groups: [], groupFilter: "", favoritesOnly: false, sortBy: "updatedAt", current: null, snapshot: null, selected: null, selectedIds: [], zoom: 1, dragging: null, search: "", modalMode: "create" };
+    var state = { bound: false, tools: [], canvases: [], groups: [], groupFilter: "", favoritesOnly: false, sortBy: "updatedAt", current: null, snapshot: null, selected: null, selectedIds: [], zoom: 1, dragging: null, search: "", modalMode: "create", assetCache: new Map(), assetPending: new Map() };
     var $ = function (id) { return document.getElementById(id); };
     var board = $("board");
     function toast(message) { var node = $("toast"); node.textContent = message; node.classList.add("show"); clearTimeout(toast.timer); toast.timer = setTimeout(function () { node.classList.remove("show"); }, 2600); }
@@ -210,6 +210,14 @@
       if (!config) return "";
       return config.text || config.title || config.markdown || config.label || config.fileName || config.url || "";
     }
+    async function assetData(assetId) {
+      if (state.assetCache.has(assetId)) return state.assetCache.get(assetId);
+      if (!state.assetPending.has(assetId)) state.assetPending.set(assetId, callTool("canvas_asset_get", { assetId: assetId }).then(function (result) {
+        var data = { url: "data:" + result.mimeType + ";base64," + result.base64, name: result.name, mimeType: result.mimeType };
+        state.assetCache.set(assetId, data); return data;
+      }).finally(function () { state.assetPending.delete(assetId); }));
+      return state.assetPending.get(assetId);
+    }
     function renderBoard() {
       Array.prototype.slice.call(board.querySelectorAll(".element,.empty,.connectors,.group-frame")).forEach(function (node) { node.remove(); });
       var elements = state.snapshot && Array.isArray(state.snapshot.elements) ? state.snapshot.elements : [];
@@ -255,7 +263,7 @@
             var tr = document.createElement("tr"); (Array.isArray(row) ? row : []).forEach(function (value) { var cell = document.createElement("td"); cell.textContent = String(value); tr.appendChild(cell); }); tbody.appendChild(tr);
           }); table.appendChild(tbody); node.appendChild(table);
         }
-        if (kind === "image" && typeof config.url === "string" && /^https?:\/\//i.test(config.url)) { var image = document.createElement("img"); image.src = config.url; image.alt = config.fileName || "Canvas image"; image.style.maxWidth = "100%"; image.style.maxHeight = "78%"; image.style.objectFit = "contain"; image.referrerPolicy = "no-referrer"; node.appendChild(image); }
+        if (kind === "image" && (config.assetId || typeof config.url === "string" && /^https?:\/\//i.test(config.url))) { var image = document.createElement("img"); image.alt = config.fileName || "Canvas image"; image.style.maxWidth = "100%"; image.style.maxHeight = "78%"; image.style.objectFit = "contain"; image.referrerPolicy = "no-referrer"; node.appendChild(image); if (config.assetId) assetData(config.assetId).then(function (data) { if (image.isConnected && data.mimeType.startsWith("image/")) image.src = data.url; }).catch(function (error) { toast(String(error.message || error)); }); else image.src = config.url; }
         if (state.selected && state.selected.id === element.id) { var handle = document.createElement("span"); handle.className = "resize-handle"; node.appendChild(handle); }
         node.addEventListener("click", function (event) { event.stopPropagation(); if (event.ctrlKey || event.metaKey || event.shiftKey) { state.selectedIds = state.selectedIds.includes(element.id) ? state.selectedIds.filter(function (id) { return id !== element.id; }) : state.selectedIds.concat(element.id); state.selected = element; } else { state.selected = element; state.selectedIds = [element.id]; } renderBoard(); renderInspector(); });
         node.addEventListener("pointerdown", function (event) { if (event.target.classList.contains("resize-handle")) return; startDrag(event, element, "move"); });
@@ -312,6 +320,7 @@
           catch (error) { toast(String(error.message || error)); }
         });
       }
+      if (config.assetId) { var download = document.createElement("button"); download.className = "btn"; download.textContent = "下载插件资产"; download.addEventListener("click", async function () { try { var asset = await assetData(config.assetId); var link = document.createElement("a"); link.href = asset.url; link.download = config.fileName || asset.name || "asset"; link.click(); } catch (error) { toast(String(error.message || error)); } }); root.appendChild(download); }
       var coords = document.createElement("div"); coords.className = "field"; var label = document.createElement("label"); label.textContent = "位置与尺寸 · 网格单位"; var box = document.createElement("div"); box.className = "coords";
       ["x", "y", "w", "h"].forEach(function (key) { var input = document.createElement("input"); input.type = "number"; input.title = key; input.value = Number(position[key]) || (key === "w" ? 4 : key === "h" ? 3 : 0); input.addEventListener("change", function () { updatePosition(key, Number(input.value)); }); box.appendChild(input); }); coords.append(label, box); root.appendChild(coords);
       var colorWrap = document.createElement("div"); colorWrap.className = "field"; var colorLabel = document.createElement("label"); colorLabel.textContent = "颜色"; var swatches = document.createElement("div"); swatches.className = "swatches";
@@ -343,6 +352,7 @@
     async function deleteCanvas() { if (!state.current || !window.confirm("删除画布及其中的所有元素？此操作无法撤销。")) return; try { await callTool("canvas_delete", { canvasId: state.current.id }); state.current = null; await refreshCanvases(); toast("已删除画布"); } catch (error) { toast(String(error.message || error)); } }
     async function exportCanvas() { if (!state.current) return; try { var data = await callTool("canvas_export", { canvasId: state.current.id }); var blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }); var url = URL.createObjectURL(blob); var link = document.createElement("a"); link.href = url; link.download = (state.current.name || "canvas").replace(/[^\p{L}\p{N}_-]+/gu, "-") + ".json"; link.click(); URL.revokeObjectURL(url); toast("已导出画布 JSON"); } catch (error) { toast(String(error.message || error)); } }
     async function importCanvas(file) { try { var snapshot = JSON.parse(await file.text()); var bundle = snapshot && snapshot.format === "duya.conductor-legacy-bundle"; var result = bundle ? await callTool("canvas_import_bundle", { bundle: snapshot }) : await callTool("canvas_import", { snapshot: snapshot, name: snapshot.canvas && snapshot.canvas.name }); await refreshCanvases(); toast("已导入 " + (result.importedCanvases || 1) + " 个画布、" + (result.importedElements || 0) + " 个元素"); } catch (error) { toast(String(error.message || error)); } finally { $("importFile").value = ""; } }
+    async function uploadAsset(file) { try { if (!state.current) throw new Error("请先选择画布"); if (file.size > 5 * 1024 * 1024) throw new Error("文件不能超过 5 MB"); var base64 = await new Promise(function (resolve, reject) { var reader = new FileReader(); reader.onload = function () { resolve(String(reader.result).split(",", 2)[1]); }; reader.onerror = function () { reject(reader.error); }; reader.readAsDataURL(file); }); var asset = await callTool("canvas_asset_put", { name: file.name, mimeType: file.type || "application/octet-stream", base64: base64 }); if (state.selected && ["image", "file"].includes(state.selected.type)) await callTool("canvas_fill_content", { canvasId: state.current.id, elementId: state.selected.id, content: { assetId: asset.assetId, fileName: asset.name, mimeType: asset.mimeType } }); else { var space = await callTool("canvas_find_empty_space", { canvasId: state.current.id, w: 5, h: 3 }); await callTool("canvas_create_element", { canvasId: state.current.id, type: asset.mimeType.startsWith("image/") ? "image" : "file", position: { x: space.x, y: space.y, w: 5, h: 3 }, config: { assetId: asset.assetId, fileName: asset.name, mimeType: asset.mimeType } }); } await loadSnapshot(); toast("已保存到插件资产库"); } catch (error) { toast(String(error.message || error)); } finally { $("assetFile").value = ""; } }
     async function saveModal() {
       var name = $("modalName").value.trim(); if (!name) { $("modalName").focus(); return; }
       try {
@@ -362,6 +372,8 @@
     $("redo").addEventListener("click", async function () { try { await callTool("canvas_redo", { canvasId: state.current.id }); await loadSnapshot(); } catch (error) { toast(String(error.message || error)); } });
     $("importCanvas").addEventListener("click", function () { $("importFile").click(); });
     $("importFile").addEventListener("change", function (event) { var file = event.target.files && event.target.files[0]; if (file) importCanvas(file); });
+    $("uploadAsset").addEventListener("click", function () { $("assetFile").click(); });
+    $("assetFile").addEventListener("change", function (event) { var file = event.target.files && event.target.files[0]; if (file) uploadAsset(file); });
     $("modalSave").addEventListener("click", saveModal);
     $("modalCancel").addEventListener("click", function () { $("modalBackdrop").classList.remove("open"); });
     $("modalBackdrop").addEventListener("click", function (event) { if (event.target === $("modalBackdrop")) $("modalBackdrop").classList.remove("open"); });

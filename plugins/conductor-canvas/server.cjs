@@ -7,14 +7,16 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
-const { randomUUID } = require('node:crypto');
+const { randomUUID, createHash } = require('node:crypto');
 
 const storePath = path.resolve(process.env.DUYA_CANVAS_STORE || path.join(os.homedir(), '.duya', 'plugins', 'conductor-canvas', 'canvases.json'));
 const WIDTH = 40;
 const HEIGHT = 30;
 const MAX_CANVASES = 500;
 const MAX_ELEMENTS = 5000;
+const MAX_ASSET_BYTES = 5 * 1024 * 1024;
 const lockPath = `${storePath}.lock`;
+const assetDir = path.join(path.dirname(storePath), 'assets');
 
 // The agent and a Mini App may each run their own MCP process. Keep the
 // read/modify/write transaction under one cross-process lock so an edit from
@@ -143,6 +145,8 @@ const tools = [
   { name: 'canvas_export', description: 'Export a canvas snapshot as portable JSON.', inputSchema: object({ canvasId: string }) },
   { name: 'canvas_import', description: 'Import a Conductor Canvas snapshot JSON object as a new canvas.', inputSchema: object({ snapshot: { type: 'object' }, name: string }, ['snapshot']) },
   { name: 'canvas_import_bundle', description: 'Import a legacy Conductor export bundle with canvases and groups in one transaction.', inputSchema: object({ bundle: { type: 'object' } }, ['bundle']) },
+  { name: 'canvas_asset_put', description: 'Store a local image or file in the Canvas plugin data directory.', inputSchema: object({ name: string, mimeType: string, base64: string }, ['name', 'mimeType', 'base64']) },
+  { name: 'canvas_asset_get', description: 'Read a Canvas plugin asset by its content hash.', inputSchema: object({ assetId: string }, ['assetId']) },
   { name: 'canvas_list_elements', description: 'List elements with compact identifiers, content summaries, and positions.', inputSchema: object({ canvasId: string }) },
   { name: 'canvas_create_element', description: 'Add a shape, sticky, text, document, table, link, image, file, or widget element.', inputSchema: object({ canvasId: string, type: { type: 'string', enum: ['shape', 'sticky', 'text', 'document', 'table', 'link', 'image', 'file', 'widget'] }, position: object({ x: number, y: number, w: number, h: number }), config: { type: 'object' } }, ['type', 'position']) },
   { name: 'canvas_connect_elements', description: 'Connect two canvas elements with a labeled relationship line.', inputSchema: object({ canvasId: string, sourceId: string, targetId: string, label: string }, ['sourceId', 'targetId']) },
@@ -215,7 +219,26 @@ function importedCanvas(snapshotInput, name, groupIds = new Map()) {
 async function callUnlocked(name, input) {
   const store = readStore();
   let result;
-  if (name === 'canvas_manage') {
+  if (name === 'canvas_asset_put') {
+    const encoded = String(input.base64 || '');
+    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(encoded) || encoded.length > Math.ceil(MAX_ASSET_BYTES / 3) * 4 + 4) fail('Invalid or oversized asset data.');
+    const bytes = Buffer.from(encoded, 'base64');
+    if (!bytes.length || bytes.length > MAX_ASSET_BYTES) fail('Asset must be between 1 byte and 5 MB.');
+    const assetId = createHash('sha256').update(bytes).digest('hex');
+    const mimeType = String(input.mimeType || 'application/octet-stream').slice(0, 120);
+    if (!/^[a-z0-9][a-z0-9.+-]*\/[a-z0-9][a-z0-9.+-]*$/i.test(mimeType)) fail('Invalid MIME type.');
+    const fileName = path.basename(String(input.name || 'asset')).slice(0, 180);
+    fs.mkdirSync(assetDir, { recursive: true });
+    if (!fs.existsSync(path.join(assetDir, assetId))) fs.writeFileSync(path.join(assetDir, assetId), bytes, { flag: 'wx', mode: 0o600 });
+    if (!fs.existsSync(path.join(assetDir, `${assetId}.json`))) fs.writeFileSync(path.join(assetDir, `${assetId}.json`), JSON.stringify({ name: fileName, mimeType, size: bytes.length }), { flag: 'wx', mode: 0o600 });
+    result = { assetId, name: fileName, mimeType, size: bytes.length };
+  } else if (name === 'canvas_asset_get') {
+    const assetId = String(input.assetId || '');
+    if (!/^[a-f0-9]{64}$/.test(assetId)) fail('Invalid asset ID.');
+    const metadata = JSON.parse(fs.readFileSync(path.join(assetDir, `${assetId}.json`), 'utf8'));
+    const bytes = fs.readFileSync(path.join(assetDir, assetId));
+    result = { assetId, name: metadata.name, mimeType: metadata.mimeType, size: bytes.length, base64: bytes.toString('base64') };
+  } else if (name === 'canvas_manage') {
     switch (input.action) {
       case 'list': result = { canvases: store.canvases.map(summary), currentCanvasId: store.currentCanvasId }; break;
       case 'get_current': result = { currentCanvas: store.canvases.find((item) => item.id === store.currentCanvasId) ? summary(canvasById(store)) : null }; break;
@@ -348,7 +371,7 @@ function errorResponse(id, error) { return { jsonrpc: '2.0', id, error: { code: 
 async function handle(message) {
   if (!message || message.jsonrpc !== '2.0' || message.id === undefined) return null;
   try {
-    if (message.method === 'initialize') return { jsonrpc: '2.0', id: message.id, result: { protocolVersion: message.params?.protocolVersion || '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'conductor_canvas', version: '0.3.0' } } };
+    if (message.method === 'initialize') return { jsonrpc: '2.0', id: message.id, result: { protocolVersion: message.params?.protocolVersion || '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'conductor_canvas', version: '0.4.0' } } };
     if (message.method === 'ping') return { jsonrpc: '2.0', id: message.id, result: {} };
     if (message.method === 'tools/list') return { jsonrpc: '2.0', id: message.id, result: { tools } };
     if (message.method === 'tools/call') {

@@ -20,7 +20,8 @@ elements; dragging and resizing elements; editing content, coordinates, and
 colors; searching the library; refreshing; and zooming the board. Mini App
 operations use only the MCP tools declared by this plugin and the normal DUYA
 Plugin App `bind` / `invoke` protocol.
-The editor also renders and edits table cells and provides a presentation view.
+The editor also renders and edits table cells, provides a presentation view,
+and uploads local image/file assets into the plugin data directory.
 
 ## MCP tools
 
@@ -33,6 +34,9 @@ The editor also renders and edits table cells and provides a presentation view.
   including snapshots exported from the previous DUYA Conductor format.
 - `canvas_import_bundle`: import a collection exported by the plugin's
   `legacy-export.cjs`, including group membership and original element data.
+- `canvas_asset_put`, `canvas_asset_get`: store and read plugin-owned local
+  assets by content hash. The Mini App can display uploaded images and download
+  uploaded files. Each asset is limited to 5 MB.
 - `canvas_create_element`, `canvas_move_element`, `canvas_resize_element`,
   `canvas_fill_content`, `canvas_style_element`, `canvas_delete_element`:
   edit elements.
@@ -45,6 +49,7 @@ The editor also renders and edits table cells and provides a presentation view.
 
 Canvas data is stored in the plugin's `${DUYA_PLUGIN_DATA}/canvases.json` file.
 The server writes atomically and keeps the file private to the current user.
+Uploaded assets live in `${DUYA_PLUGIN_DATA}/assets`.
 The Mini App and agent use separate MCP processes against the same data store;
 a cross-process lock protects each read/modify/write transaction.
 
