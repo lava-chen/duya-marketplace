@@ -1,7 +1,7 @@
 /**
  * DUYA Browser Bridge - Background Service Worker
- * WebSocket client connecting to Browser Daemon
- * Receives commands from Agent Process via Daemon
+ * WebSocket client connecting to the Browser plugin's local transport
+ * Receives commands from the plugin's CUA server
  *
  * Features:
  * - Tab group management: agent tabs live in the user's own browser window,
@@ -12,7 +12,7 @@
  *   automation window is created instead; it auto-closes when idle.
  */
 
-const DAEMON_URL = 'ws://127.0.0.1:19825/ext';
+const BRIDGE_URL = 'ws://127.0.0.1:19826/ext';
 const RECONNECT_INTERVAL = 5000;
 const MAX_RECONNECT_ATTEMPTS = 10;
 
@@ -246,7 +246,7 @@ async function ensureSessionGroup(sessionId, tabId) {
 // The DUYA desktop pushes the user's `browserMaxTabs` setting to this
 // extension via a `config` WS message whenever the connection is verified or
 // the setting changes. The value is persisted in chrome.storage so it
-// survives service-worker restarts between daemon pushes.
+// survives service-worker restarts between plugin configuration updates.
 const MAX_TABS_STORAGE_KEY = 'duyaMaxTabs';
 const DEFAULT_MAX_TABS = 10;
 let maxTabs = DEFAULT_MAX_TABS;
@@ -561,7 +561,7 @@ function connect() {
     let settled = false;
     let waitingForAck = false;
     let ackTimeout = null;
-    const socket = new WebSocket(DAEMON_URL);
+    const socket = new WebSocket(BRIDGE_URL);
     ws = socket;
     helloSent = false;
 
@@ -596,7 +596,7 @@ function connect() {
 
     socket.onopen = async () => {
       try {
-        console.log('[DUYA Bridge] Connected to daemon');
+        console.log('[DUYA Bridge] Connected to Browser plugin');
         reconnectAttempts = 0;
         isConnecting = false;
         clearConnectTimeout();
@@ -607,11 +607,11 @@ function connect() {
           return;
         }
 
-        // Wait for daemon hello_ack instead of resolving immediately
+        // Wait for the plugin's hello acknowledgement before resolving.
         waitingForAck = true;
         ackTimeout = setTimeout(() => {
           if (waitingForAck && !settled) {
-            console.warn('[DUYA Bridge] No hello_ack received, closing');
+            console.warn('[DUYA Bridge] No connection acknowledgement received, closing');
             try { socket.close(); } catch {}
             finish({ ok: false, connected: false, phase: 'ack_timeout' });
           }
@@ -641,7 +641,7 @@ function connect() {
               const blockedDomains = await getBlockedDomains();
               sendSocketMessage(socket, { type: 'blocked_domains', domains: blockedDomains });
             } catch {}
-            sendSocketMessage(socket, { type: 'log', level: 'info', msg: 'Connected to daemon' });
+            sendSocketMessage(socket, { type: 'log', level: 'info', msg: 'Connected to Browser plugin' });
           } else {
             finish({
               ok: false,
@@ -657,7 +657,7 @@ function connect() {
         // Silently ignore stale hello_ack (e.g., from heartbeat re-hello)
         if (msg.type === 'hello_ack') return;
 
-        // Handle config pushes from the daemon (e.g. max agent pages).
+        // Handle configuration updates from the plugin (e.g. max agent pages).
         // Persist locally so the cap survives service-worker restarts.
         if (msg.type === 'config') {
           if (typeof msg.maxTabs !== 'undefined') {
@@ -680,7 +680,7 @@ function connect() {
     };
 
     socket.onclose = (event) => {
-      console.log('[DUYA Bridge] Disconnected from daemon', event.code, event.reason || '');
+      console.log('[DUYA Bridge] Disconnected from Browser plugin', event.code, event.reason || '');
       clearConnectTimeout();
       if (ackTimeout) { clearTimeout(ackTimeout); ackTimeout = null; }
       if (ws === socket) ws = null;
@@ -1661,7 +1661,7 @@ async function handlePressKey(id, msg) {
 // ─── Cookies ──────────────────────────────────────────────────────────
 
 async function handleCookieExport(id) {
-  // This action can only arrive through DUYA's verified localhost daemon and
+  // This action can only arrive through DUYA's verified Browser plugin connection and
   // is initiated by the user from Settings. Do not log cookie values.
   try {
     const cookies = await chrome.cookies.getAll({});
@@ -2036,13 +2036,13 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 // ─── Storage Change Listener ─────────────────────────────────────────
 
-// Listen for blocked domains changes and notify daemon
+// Listen for blocked domains changes and notify the Browser plugin
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes[BLOCKED_DOMAINS_KEY]) {
     const newDomains = changes[BLOCKED_DOMAINS_KEY].newValue || [];
     console.log('[DUYA Bridge] Blocked domains updated:', newDomains.length, 'domains');
 
-    // Notify daemon of the change
+    // Notify the Browser plugin of the change.
     if (ws && ws.readyState === WebSocket.OPEN) {
       sendMessage({
         type: 'blocked_domains',
@@ -2069,7 +2069,7 @@ chrome.runtime.onStartup.addListener(() => {
   void connect();
 });
 
-// Allow external callers (e.g. daemon health check via extension popup) to trigger a reconnect
+// Allow the popup to check connection state and trigger a reconnect.
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === 'ping') {
     sendResponse({ ok: true, connected: ws?.readyState === WebSocket.OPEN });

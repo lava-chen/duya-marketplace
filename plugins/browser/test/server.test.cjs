@@ -1,9 +1,10 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
-const http = require('node:http');
+const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
 const { once } = require('node:events');
@@ -11,86 +12,196 @@ const { after, before, test } = require('node:test');
 
 const pluginRoot = path.resolve(__dirname, '..');
 const serverPath = path.join(pluginRoot, 'server.cjs');
-let browserServer;
-let browserPort;
-let browserUrl = 'about:blank';
+let bridgePort;
 let nodeModulesDir;
+let fixtureRoot;
+let fakeChromiumPath;
+let managedCdpLogPath;
 const systemTabs = [{ id: 72, url: 'https://openai.com', title: 'OpenAI', active: true }];
 const attachedSystemTabs = new Set();
 const browserCommands = [];
-const closedWebviewSessions = [];
 let mcp;
 let mcpBuffer = '';
 let pending = new Map();
 let nextId = 1;
+let extensionSocket;
+
+function maskedFrame(value) {
+  const payload = Buffer.from(JSON.stringify(value));
+  const mask = crypto.randomBytes(4);
+  let header;
+  if (payload.length < 126) header = Buffer.from([0x81, 0x80 | payload.length]);
+  else {
+    header = Buffer.alloc(4);
+    header[0] = 0x81;
+    header[1] = 0x80 | 126;
+    header.writeUInt16BE(payload.length, 2);
+  }
+  const masked = Buffer.from(payload);
+  for (let i = 0; i < masked.length; i++) masked[i] ^= mask[i % 4];
+  return Buffer.concat([header, mask, masked]);
+}
+
+async function connectMockExtension(port) {
+  const id = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  let socket;
+  for (let attempt = 0; attempt < 40; attempt++) {
+    socket = net.connect(port, '127.0.0.1');
+    try {
+      await once(socket, 'connect');
+      break;
+    } catch (error) {
+      socket.destroy();
+      if (error.code !== 'ECONNREFUSED' || attempt === 39) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+  socket.write([
+    'GET /ext HTTP/1.1', `Host: 127.0.0.1:${port}`, 'Upgrade: websocket', 'Connection: Upgrade',
+    `Sec-WebSocket-Key: ${crypto.randomBytes(16).toString('base64')}`, 'Sec-WebSocket-Version: 13',
+    `Origin: chrome-extension://${id}`, '', '',
+  ].join('\r\n'));
+  let buffer = Buffer.alloc(0);
+  const messageWaiters = [];
+  let ready;
+  const connected = new Promise((resolve, reject) => { ready = { resolve, reject }; });
+  let upgraded = false;
+  const send = (message) => socket.write(maskedFrame(message));
+  const handleMessage = (message) => {
+    const waiter = messageWaiters.shift();
+    if (waiter) waiter(message);
+    if (!message?.id) return;
+    browserCommands.push(message);
+    let data = {};
+    if (message.action === 'tabs' && message.op === 'available') data = systemTabs;
+    else if (message.action === 'tabs' && message.op === 'attach') {
+      attachedSystemTabs.add(message.tabId);
+      data = systemTabs.find((item) => item.id === message.tabId);
+    } else if (message.action === 'tabs' && message.op === 'select') data = systemTabs.find((item) => item.id === message.tabId);
+    else if (message.action === 'tabs' && message.op === 'list') data = systemTabs.filter((tab) => attachedSystemTabs.has(tab.id));
+    else if (message.action === 'evaluate') {
+      const tab = systemTabs.find((item) => item.id === message.tabId) ?? systemTabs[0];
+      data = { url: tab.url, title: tab.title, text: tab.title, elements: [] };
+    }
+    send({ id: message.id, ok: true, data });
+  };
+  const consume = (chunk) => {
+    buffer = Buffer.concat([buffer, chunk]);
+    if (!upgraded) {
+      const boundary = buffer.indexOf('\r\n\r\n');
+      if (boundary < 0) return;
+      const headers = buffer.subarray(0, boundary).toString('utf8');
+      if (!headers.startsWith('HTTP/1.1 101')) return ready.reject(new Error(`Mock extension upgrade failed: ${headers}`));
+      buffer = buffer.subarray(boundary + 4);
+      upgraded = true;
+      ready.resolve();
+    }
+    while (buffer.length >= 2) {
+      const opcode = buffer[0] & 0x0f;
+      let length = buffer[1] & 0x7f;
+      let offset = 2;
+      if (length === 126) { if (buffer.length < 4) return; length = buffer.readUInt16BE(2); offset = 4; }
+      else if (length === 127) { if (buffer.length < 10) return; length = Number(buffer.readBigUInt64BE(2)); offset = 10; }
+      if (buffer.length < offset + length) return;
+      const payload = buffer.subarray(offset, offset + length);
+      buffer = buffer.subarray(offset + length);
+      if (opcode === 0x1) handleMessage(JSON.parse(payload.toString('utf8')));
+    }
+  };
+  socket.on('data', consume);
+  socket.once('error', (error) => ready.reject(error));
+  await connected;
+  const waitMessage = () => new Promise((resolve) => messageWaiters.push(resolve));
+  send({ type: 'hello', name: 'DUYA Browser Bridge', version: '1.5.9', extensionId: id });
+  assert.deepEqual(await waitMessage(), { type: 'hello_ack', ok: true });
+  return socket;
+}
+
+async function freeTcpPort() {
+  const server = net.createServer();
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const port = server.address().port;
+  await new Promise((resolve) => server.close(resolve));
+  return port;
+}
+
+function createFakeChromium(root) {
+  const scriptPath = path.join(root, 'fake-cdp.cjs');
+  const launcherPath = path.join(root, 'fake-chromium');
+  managedCdpLogPath = path.join(root, 'managed-cdp.jsonl');
+  const script = `
+const fs = require('node:fs');
+const input = fs.createReadStream(null, { fd: 3 });
+let buffer = '';
+const urls = new Map([['session-target-0', 'about:blank']]);
+function write(value) { fs.writeSync(4, JSON.stringify(value) + '\\0'); }
+input.on('data', (chunk) => {
+  buffer += chunk.toString('utf8');
+  let split;
+  while ((split = buffer.indexOf('\\0')) !== -1) {
+    const raw = buffer.slice(0, split);
+    buffer = buffer.slice(split + 1);
+    if (!raw) continue;
+    const command = JSON.parse(raw);
+    fs.appendFileSync(${JSON.stringify(managedCdpLogPath)}, JSON.stringify(command) + '\\n');
+    const result = (value = {}) => write({ id: command.id, result: value });
+    if (command.method === 'Target.getTargets') {
+      result({ targetInfos: [{ targetId: 'target-0', type: 'page', url: 'about:blank' }] });
+    } else if (command.method === 'Target.createTarget') {
+      result({ targetId: 'target-' + Date.now() });
+    } else if (command.method === 'Target.attachToTarget') {
+      const sessionId = 'session-' + command.params.targetId;
+      urls.set(sessionId, 'about:blank');
+      result({ sessionId });
+    } else if (command.method === 'Page.navigate') {
+      const url = command.params.url;
+      urls.set(command.sessionId, url);
+      result({ frameId: 'main-frame' });
+      setTimeout(() => write({ method: 'Page.loadEventFired', sessionId: command.sessionId, params: { timestamp: Date.now() } }), 5);
+    } else if (command.method === 'Runtime.evaluate') {
+      const url = urls.get(command.sessionId) || 'about:blank';
+      const title = url === 'about:blank' ? '' : 'Example Domain';
+      const value = command.params.expression.includes('document.body?.innerText')
+        ? { url, title, text: title || '', elements: [] }
+        : { url, title };
+      result({ result: { type: 'object', value } });
+    } else if (command.method === 'Page.getNavigationHistory') {
+      result({ currentIndex: 0, entries: [] });
+    } else if (command.method === 'Page.captureScreenshot') {
+      result({ data: Buffer.from('png').toString('base64') });
+    } else if (command.method === 'Target.closeTarget') {
+      result({ success: true });
+    } else if (command.method === 'Browser.close') {
+      result();
+      setTimeout(() => process.exit(0), 10);
+    } else {
+      result();
+    }
+  }
+});
+`;
+  fs.writeFileSync(scriptPath, script, { mode: 0o600 });
+  fs.writeFileSync(launcherPath, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(scriptPath)}\n`, { mode: 0o700 });
+  fs.chmodSync(launcherPath, 0o700);
+  return launcherPath;
+}
 
 before(async () => {
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'duya-cua-repl-'));
-  nodeModulesDir = path.join(tempRoot, 'node_modules');
+  fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'duya-cua-repl-'));
+  nodeModulesDir = path.join(fixtureRoot, 'node_modules');
   const fixtureDir = path.join(nodeModulesDir, 'cua-fixture');
   fs.mkdirSync(fixtureDir, { recursive: true });
   fs.writeFileSync(path.join(fixtureDir, 'index.js'), 'module.exports = { answer: 42 };\n');
-  browserServer = http.createServer(async (req, res) => {
-    const chunks = [];
-    for await (const chunk of req) chunks.push(chunk);
-    const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : undefined;
-    const respond = (data, status = 200) => {
-      res.writeHead(status, { 'content-type': 'application/json' });
-      res.end(JSON.stringify(data));
-    };
-    if (req.url === '/ping') return respond({ ok: true, extensionConnected: true });
-    if (req.url === '/webview-wait-load') return respond({ ok: true });
-    if (req.url === '/webview-close') {
-      closedWebviewSessions.push(body.sessionId);
-      return respond({ ok: true });
-    }
-    if (req.url === '/command') {
-      browserCommands.push(body);
-      if (body.action === 'tabs' && body.op === 'available') return respond({ ok: true, data: systemTabs });
-      if (body.action === 'tabs' && body.op === 'attach') {
-        attachedSystemTabs.add(body.tabId);
-        const tab = systemTabs.find((item) => item.id === body.tabId);
-        return respond({ ok: true, data: tab });
-      }
-      if (body.action === 'tabs' && body.op === 'select') {
-        const tab = systemTabs.find((item) => item.id === body.tabId);
-        return respond({ ok: true, data: tab });
-      }
-      if (body.action === 'tabs' && body.op === 'list') {
-        return respond({ ok: true, data: systemTabs.filter((tab) => attachedSystemTabs.has(tab.id)) });
-      }
-      if (body.action === 'evaluate') {
-        const tab = systemTabs.find((item) => item.id === body.tabId) ?? systemTabs[0];
-        return respond({ ok: true, data: { url: tab.url, title: tab.title, text: tab.title, elements: [] } });
-      }
-      return respond({ ok: true, data: {} });
-    }
-    if (req.url === '/webview-command') {
-      if (body.method === 'Page.navigate') {
-        browserUrl = body.params.url;
-        return respond({ id: body.id, ok: true, result: { frameId: 'main-frame' } });
-      }
-      if (body.method === 'Page.getNavigationHistory') {
-        return respond({ id: body.id, ok: true, result: { currentIndex: 0, entries: [] } });
-      }
-      if (body.method === 'Runtime.evaluate') {
-        const value = body.params.expression.includes('document.body?.innerText')
-          ? { url: browserUrl, title: browserUrl === 'about:blank' ? '' : 'Example Domain', text: 'Example Domain', elements: [] }
-          : { url: browserUrl, title: browserUrl === 'about:blank' ? '' : 'Example Domain' };
-        return respond({ id: body.id, ok: true, result: { result: { value } } });
-      }
-      if (body.method === 'Page.captureScreenshot') {
-        return respond({ id: body.id, ok: true, result: { data: Buffer.from('png').toString('base64') } });
-      }
-      return respond({ id: body.id, ok: true, result: {} });
-    }
-    return respond({ error: 'unexpected route' }, 404);
-  });
-  browserServer.listen(0, '127.0.0.1');
-  await once(browserServer, 'listening');
-  browserPort = browserServer.address().port;
+  fakeChromiumPath = createFakeChromium(fixtureRoot);
+  bridgePort = await freeTcpPort();
   mcp = spawn(process.execPath, [serverPath], {
-    env: { ...process.env, DUYA_CUA_DAEMON_PORT: String(browserPort) },
+    env: {
+      ...process.env,
+      DUYA_BROWSER_EXECUTABLE: fakeChromiumPath,
+      DUYA_PLUGIN_DATA: path.join(fixtureRoot, 'plugin-data'),
+      DUYA_BROWSER_BRIDGE_PORT: String(bridgePort),
+    },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   mcp.stdout.setEncoding('utf8');
@@ -110,12 +221,16 @@ before(async () => {
       }
     }
   });
+  extensionSocket = await connectMockExtension(bridgePort);
 });
 
 after(async () => {
-  mcp?.kill();
-  if (browserServer) await new Promise((resolve) => browserServer.close(resolve));
-  if (nodeModulesDir) fs.rmSync(path.dirname(nodeModulesDir), { recursive: true, force: true });
+  extensionSocket?.destroy();
+  if (mcp && mcp.exitCode === null) {
+    mcp.stdin.end();
+    await once(mcp, 'exit');
+  }
+  if (fixtureRoot) fs.rmSync(fixtureRoot, { recursive: true, force: true });
 });
 
 function rpc(method, params = {}) {
@@ -151,7 +266,7 @@ test('exposes the three CUA REPL tools and the documented initialization sequenc
   assert.match(blocked.content[0].text, /first js call must contain only await cua\.getApiDocs/);
 
   const docs = await js('await cua.getApiDocs()');
-  assert.match(docs.content[0].text, /DUYA CUA API v1/);
+  assert.match(docs.content[0].text, /Browser CUA API v1/);
 
   const state = await js('await cua.getState()');
   assert.match(state.content[0].text, /about:blank/);
@@ -176,7 +291,7 @@ test('keeps JavaScript bindings and browser state across calls, and reset only c
   assert.equal(blocked.isError, true);
 
   const docs = await js('await cua.getApiDocs()');
-  assert.match(docs.content[0].text, /DUYA CUA API v1/);
+  assert.match(docs.content[0].text, /Browser CUA API v1/);
   const state = await js('await cua.getState()');
   assert.match(state.content[0].text, /https:\/\/example\.com/);
 });
@@ -193,8 +308,9 @@ test('selects an existing Chrome tab by ID and attaches it to the CUA session', 
   assert.match(state.content[0].text, /https:\/\/openai\.com/);
 });
 
-test('opens and closes isolated DUYA webview tabs by CUA tab ID', async () => {
-  await js('await cua.browser.selectTarget({browser:"DUYA"})');
+test('opens and closes isolated Managed Chromium tabs by CUA tab ID', async () => {
+  const selected = await js('await cua.browser.selectTarget({browser:"Managed Chromium"})');
+  assert.match(selected.content[0].text, /Managed Chromium/);
   await js('await cua.getState()');
   const opened = await js('await cua.browser.newTab("https://second.example")');
   assert.match(opened.content[0].text, /tab_1/);
@@ -203,7 +319,8 @@ test('opens and closes isolated DUYA webview tabs by CUA tab ID', async () => {
   assert.match(listed.content[0].text, /tab_0,tab_1/);
   const closed = await js('await cua.browser.closeTab("tab_1")');
   assert.match(closed.content[0].text, /tab_1/);
-  assert.ok(closedWebviewSessions.some((id) => id.endsWith('::tab_1')));
+  const commands = fs.readFileSync(managedCdpLogPath, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+  assert.ok(commands.some((command) => command.method === 'Target.closeTarget'));
 });
 
 test('adds an absolute node_modules directory to persistent REPL require lookup', async () => {

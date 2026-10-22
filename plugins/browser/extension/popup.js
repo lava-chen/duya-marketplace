@@ -1,7 +1,5 @@
 // DUYA Browser Bridge - Popup Script
 
-const DAEMON_URL = 'http://127.0.0.1:19825';
-
 function setState(state, label, detail) {
   const statusCard = document.getElementById('statusCard');
   const statusDot = document.getElementById('statusDot');
@@ -17,21 +15,16 @@ function setState(state, label, detail) {
 }
 
 async function checkStatus() {
-  setState('checking', 'Checking...', 'Connecting to daemon');
-
+  setState('checking', 'Checking...', 'Checking Browser plugin connection');
   try {
-    const resp = await fetch(DAEMON_URL + '/ping');
-    if (!resp.ok) throw new Error('Daemon returned ' + resp.status);
-    const data = await resp.json();
-
-    if (data.extensionConnected) {
-      const extVer = data.extensionVersion || '?';
-      setState('connected', 'Connected', 'Bridge v' + extVer + ' active');
+    const data = await chrome.runtime.sendMessage({ type: 'ping' });
+    if (data?.connected) {
+      setState('connected', 'Connected', 'Browser plugin bridge active');
     } else {
-      setState('disconnected', 'Not Connected', 'Daemon running, bridge offline');
+      setState('disconnected', 'Not Connected', 'Start the Browser plugin MCP server');
     }
   } catch {
-    setState('disconnected', 'Daemon Offline', 'Start DUYA desktop app first');
+    setState('disconnected', 'Not Connected', 'Start the Browser plugin MCP server');
   }
 }
 
@@ -41,12 +34,12 @@ function initUI() {
   document.getElementById('titleVersion').textContent = 'v' + manifest.version;
 
   document.getElementById('connectBtn').addEventListener('click', async function () {
-    setState('checking', 'Connecting...', 'Triggering reconnect');
+    setState('checking', 'Connecting...', 'Connecting to Browser plugin');
     try {
       await chrome.runtime.sendMessage({ type: 'connect' });
     } catch (error) {
       const message = error && error.message ? error.message : String(error);
-      setState('disconnected', 'Reconnect Failed', message);
+      setState('disconnected', 'Connection Failed', message);
     } finally {
       await new Promise(function (r) { return setTimeout(r, 800); });
       await checkStatus();

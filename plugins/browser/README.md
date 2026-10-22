@@ -1,7 +1,9 @@
 # DUYA Browser
 
-DUYA Browser exposes the browser control plane as the `cua_repl` MCP server.
-Its JavaScript context persists for the lifetime of the MCP connection.
+DUYA Browser exposes a persistent JavaScript CUA session through the
+`cua_repl` MCP server. This plugin owns a managed Chromium process, the
+Browser Bridge extension, and the local HTTP/WebSocket relay used for Chrome
+and Edge. Browser control does not depend on a DUYA browser daemon.
 
 ## Tools
 
@@ -9,34 +11,33 @@ Its JavaScript context persists for the lifetime of the MCP connection.
   context. After startup or reset, one call must contain only
   `await cua.getApiDocs()`; the next call must contain only
   `await cua.getState()`. Read state in a separate call after switching
-  targets or active tabs. The server rejects browser actions in the same call
-  that reads state.
+  targets or active tabs.
 - `js_add_node_module_dir({ path })` adds an absolute `node_modules` directory
   to the REPL's module search path.
-- `js_reset()` clears the JavaScript context and repeats the initialization
-  requirement. It leaves browser tabs and their state open.
+- `js_reset()` clears JavaScript bindings and repeats the initialization
+  requirement. It leaves browser tabs open.
 
-The CUA bridge supports DUYA's agent webview and the connected Chrome or Edge
-extension. DUYA webview tabs opened by the plugin are isolated agent tabs.
-System-browser tabs can be selected by ID or exact URL and attached to this
-plugin session; closing the CUA session detaches from attached tabs without
-closing them.
+## Managed Chromium
 
-The CUA API also supports listing, opening, switching, and closing tabs.
-Closing an attached system-browser tab releases the attachment; it does not
-close the user's tab.
+The default `Managed Chromium` target launches a private Chromium process for
+this plugin and stores its profile under the plugin data directory. Set
+`CHROME_BIN` or `DUYA_BROWSER_EXECUTABLE` when Chrome or Chromium is not on the
+system `PATH`. Existing clients can still use `DUYA` as an alias for this
+target; it does not select the DUYA desktop browser panel.
 
-The plugin calls DUYA's local browser daemon. Keep the DUYA desktop app running.
-For Chrome or Edge, install the Browser Bridge shipped in this plugin:
+## Chrome and Edge
 
-1. Open the browser's extension management page and enable Developer mode.
-2. Choose **Load unpacked** and select this plugin's `extension/` directory.
-3. Keep the extension connected to the DUYA desktop app. The extension in
-   DUYA's old one-click installer is version 1.5.8 and lacks `tabs.available`
-   and `tabs.attach`; use this plugin's version 1.5.9 for existing-tab control.
+The plugin process starts its own HTTP and WebSocket relay on
+`127.0.0.1:19826`. The extension connects to that service, which forwards
+commands and results without a DUYA browser daemon. If a local policy requires
+pinning the extension, set `DUYA_BROWSER_EXTENSION_ID` to the ID shown in the
+browser's extension details.
+The service validates that the claimed extension ID matches the browser's
+`chrome-extension://` origin and, when configured, the pinned ID.
 
-The plugin owns the extension's source and its attached-tab behavior. DUYA's
-legacy extension and daemon remain installed for compatibility during migration;
-the Browser MCP service still depends on the daemon and is not yet a fully
-independent browser implementation. MCP tool approval is governed by DUYA's
-plugin MCP approval flow.
+To install the extension, open `chrome://extensions` or `edge://extensions`,
+enable Developer mode, choose **Load unpacked**, and select this plugin's
+`extension/` directory. The service must be running when the extension
+connects; the extension retries after service-worker wakeups.
+
+MCP tool approval continues through DUYA's plugin approval flow.

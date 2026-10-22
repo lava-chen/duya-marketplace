@@ -1,19 +1,27 @@
 #!/usr/bin/env node
 'use strict';
 
-// A dependency-free stdio MCP server. Browser actions are delegated to the
-// DUYA browser daemon; this process owns only the persistent JavaScript REPL.
+// A dependency-free stdio MCP server. Both managed Chromium and Chrome/Edge
+// control are owned by this plugin process.
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const vm = require('node:vm');
 const repl = require('node:repl');
 const { PassThrough } = require('node:stream');
 const { createRequire } = require('node:module');
 const { randomUUID } = require('node:crypto');
+const { createBridgeService } = require('./bridge-service.cjs');
+const { createManagedBrowser } = require('./managed-browser.cjs');
 
-const port = Number.parseInt(process.env.DUYA_CUA_DAEMON_PORT || process.env.DUYA_DAEMON_PORT || '19825', 10);
-const baseUrl = `http://127.0.0.1:${port}`;
+const bridgeService = createBridgeService();
+const bridgeReady = bridgeService.start();
+bridgeReady.catch((error) => process.stderr.write(`Browser plugin service failed to start: ${error.message}\n`));
 const sessionId = `cua_${process.pid}_${randomUUID()}`;
+const managedDataRoot = process.env.DUYA_PLUGIN_DATA
+  ? path.join(process.env.DUYA_PLUGIN_DATA, 'managed-browser')
+  : path.join(os.homedir(), '.duya', 'plugins', 'browser');
+const managedBrowser = createManagedBrowser({ dataPath: managedDataRoot });
 const requestTimeoutMs = 35_000;
 const maxOutputChars = 60_000;
 let requestId = 0;
@@ -23,14 +31,14 @@ let initializationStage = 0;
 let currentJsCall = 0;
 let stateReadCall = -1;
 let replServer;
-let activeTarget = 'DUYA';
+let activeTarget = 'Managed Chromium';
 let selectedSystemTab = null;
-let webviewTabs = new Map([['tab_0', { url: 'about:blank', title: '' }]]);
-let activeWebviewTab = 'tab_0';
-let webviewTabCounter = 0;
+let managedTabs = new Map([['tab_0', { url: 'about:blank', title: '' }]]);
+let activeManagedTab = 'tab_0';
+let managedTabCounter = 0;
 const nodeModuleDirs = [];
 
-const API_DOCS = `DUYA CUA API v1\n\nInitialization:\n1. The first js call after startup/reset must contain only await cua.getApiDocs(). Read its returned documentation before continuing.\n2. The next js call must contain only await cua.getState(). Inspect the returned target and page state before continuing.\n3. After switching targets or changing the active tab, use a separate js call with await cua.getState() and inspect its result before acting on that page.\n4. Only then navigate, click, type, or run other page actions. Reading state and performing browser actions in the same js call is rejected.\n\nTargets:\n- DUYA: isolated agent webview tabs in the DUYA browser panel.\n- Chrome or Edge: the connected DUYA Browser Bridge extension. Its available HTTP(S) tabs can be selected by tab ID or exact URL and attached to this CUA session.\n\nMethods:\n- await cua.getApiDocs()\n- await cua.getState()\n- await cua.browser.targets()\n- await cua.browser.selectTarget({ browser: 'DUYA' | 'Chrome' | 'Edge', tabId?: string | number, url?: string })\n- await cua.browser.tabs()\n- await cua.browser.newTab(url?)\n- await cua.browser.closeTab(tabId?)\n- await cua.browser.navigate(url)\n- await cua.browser.snapshot()\n- await cua.browser.click(selector)\n- await cua.browser.type(selector, text)\n- await cua.browser.pressKey(key)\n- await cua.browser.scroll({ direction?: 'up'|'down'|'left'|'right', amount?: number })\n- await cua.browser.screenshot()\n- await cua.browser.goBack()\n\nThe JavaScript REPL is persistent. js_reset clears its JavaScript bindings and repeats this initialization sequence; it does not close tabs or reset browser state.\n`;
+const API_DOCS = `Browser CUA API v1\n\nInitialization:\n1. The first js call after startup/reset must contain only await cua.getApiDocs(). Read its returned documentation before continuing.\n2. The next js call must contain only await cua.getState(). Inspect the returned target and page state before continuing.\n3. After switching targets or changing the active tab, use a separate js call with await cua.getState() and inspect its result before acting on that page.\n4. Only then navigate, click, type, or run other page actions. Reading state and performing browser actions in the same js call is rejected.\n\nTargets:\n- Managed Chromium: a private Chromium profile and page session owned by this Browser plugin. It runs independently of DUYA's in-app browser.\n- Chrome or Edge: the Browser Bridge extension connected to the plugin's local browser service. Its available HTTP(S) tabs can be selected by tab ID or exact URL and attached to this CUA session.\n\nMethods:\n- await cua.getApiDocs()\n- await cua.getState()\n- await cua.browser.targets()\n- await cua.browser.selectTarget({ browser: 'Managed Chromium' | 'Chrome' | 'Edge', tabId?: string | number, url?: string })\n- await cua.browser.tabs()\n- await cua.browser.newTab(url?)\n- await cua.browser.closeTab(tabId?)\n- await cua.browser.navigate(url)\n- await cua.browser.snapshot()\n- await cua.browser.click(selector)\n- await cua.browser.type(selector, text)\n- await cua.browser.pressKey(key)\n- await cua.browser.scroll({ direction?: 'up'|'down'|'left'|'right', amount?: number })\n- await cua.browser.screenshot()\n- await cua.browser.goBack()\n\nThe JavaScript REPL is persistent. js_reset clears its JavaScript bindings and repeats this initialization sequence; it does not close tabs or reset browser state.\n`;
 
 function jsonLine(value) {
   process.stdout.write(`${JSON.stringify(value)}\n`);
@@ -40,58 +48,42 @@ function textResult(text, isError = false) {
   return { content: [{ type: 'text', text }], ...(isError ? { isError: true } : {}) };
 }
 
-async function daemonRequest(route, body, timeoutMs = requestTimeoutMs) {
+async function pluginBridgeJson(route, body, timeoutMs = requestTimeoutMs) {
+  const port = await bridgeReady;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(`${baseUrl}${route}`, {
+    const response = await fetch(`http://127.0.0.1:${port}${route}`, {
       method: body === undefined ? 'GET' : 'POST',
-      headers: { 'X-DUYA': '1', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+      headers: { 'X-DUYA-BROWSER': bridgeService.token, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       signal: controller.signal,
     });
+    const raw = await response.text();
+    let data;
+    try { data = raw ? JSON.parse(raw) : {}; } catch { throw new Error(`Browser plugin service returned invalid JSON (${response.status})`); }
+    if (!response.ok) throw new Error(data.error || `Browser plugin service returned HTTP ${response.status}`);
+    return data;
   } finally {
     clearTimeout(timer);
   }
 }
 
-async function daemonJson(route, body, timeoutMs) {
-  const response = await daemonRequest(route, body, timeoutMs);
-  const raw = await response.text();
-  let data;
-  try { data = raw ? JSON.parse(raw) : {}; } catch { throw new Error(`DUYA browser daemon returned invalid JSON (${response.status})`); }
-  if (!response.ok) throw new Error(data.error || data.message || `DUYA browser daemon returned HTTP ${response.status}`);
-  return data;
+function managedTabId() {
+  return activeManagedTab;
 }
 
-function currentTabId() {
-  return activeWebviewTab === 'tab_0' ? sessionId : `${sessionId}::${activeWebviewTab}`;
+async function managedCdp(method, params = {}, tabId = activeManagedTab) {
+  return managedBrowser.send(method, params, String(tabId));
 }
 
-async function webviewCdp(method, params = {}, tabId = activeWebviewTab) {
-  const targetSessionId = tabId === 'tab_0' ? sessionId : `${sessionId}::${tabId}`;
-  const response = await daemonRequest('/webview-command', {
-    id: `cua_${process.pid}_${Date.now()}_${++requestId}`,
-    sessionId: targetSessionId,
-    waitRegistration: true,
-    background: true,
-    method,
-    params,
-  }, requestTimeoutMs);
-  const raw = await response.text();
-  let data;
-  try { data = raw ? JSON.parse(raw) : {}; } catch { throw new Error(`DUYA webview returned invalid JSON (${response.status})`); }
-  if (!response.ok || data.ok === false) throw new Error(data.error || `DUYA webview returned HTTP ${response.status}`);
-  return data.result;
-}
-
-async function extensionCommand(command) {
-  const data = await daemonJson('/command', {
+async function extensionCommand(command, timeoutMs = requestTimeoutMs) {
+  const data = await pluginBridgeJson('/command', {
     id: `cua_${process.pid}_${Date.now()}_${++requestId}`,
     sessionId,
     ...command,
     ...(command.tabId !== undefined || selectedSystemTab === null ? {} : { tabId: selectedSystemTab }),
-  }, requestTimeoutMs);
+  }, timeoutMs);
   if (data.error || data.ok === false) throw new Error(data.error || 'Browser Bridge command failed');
   return data.data ?? data;
 }
@@ -103,24 +95,24 @@ function assertInitialized() {
 }
 
 async function targetTabs() {
-  if (activeTarget === 'DUYA') {
+  if (activeTarget === 'Managed Chromium') {
     const result = [];
-    for (const [id, state] of webviewTabs) {
+    for (const [id, state] of managedTabs) {
       let current = state;
-      if (id === activeWebviewTab) {
+      if (id === activeManagedTab) {
         try {
-          const details = await webviewCdp('Runtime.evaluate', {
+          const details = await managedCdp('Runtime.evaluate', {
             expression: '({url: location.href, title: document.title})',
             returnByValue: true,
             awaitPromise: true,
           });
           current = { url: details?.result?.value?.url ?? state.url, title: details?.result?.value?.title ?? state.title };
-          webviewTabs.set(id, current);
+          managedTabs.set(id, current);
         } catch {
           // Return known local state if a page is still starting up.
         }
       }
-      result.push({ id, ...current, active: id === activeWebviewTab });
+      result.push({ id, ...current, active: id === activeManagedTab });
     }
     return result;
   }
@@ -136,15 +128,15 @@ async function availableSystemTabs() {
 async function selectTarget(input = {}) {
   const previousTarget = activeTarget;
   const previousSystemTab = selectedSystemTab;
-  const previousWebviewTab = activeWebviewTab;
+  const previousManagedTab = activeManagedTab;
   const browser = typeof input.browser === 'string' ? input.browser.trim().toLowerCase() : '';
   if (browser) {
-    if (browser === 'duya' || browser === 'iab' || browser === 'in-app') activeTarget = 'DUYA';
+    if (browser === 'managed chromium' || browser === 'managed-chromium' || browser === 'duya' || browser === 'iab' || browser === 'in-app') activeTarget = 'Managed Chromium';
     else if (browser === 'chrome' || browser === 'edge' || browser === 'system') activeTarget = browser === 'edge' ? 'Edge' : 'Chrome';
     else throw new Error(`Unsupported browser target: ${input.browser}`);
   }
 
-  const tabs = activeTarget === 'DUYA' ? await targetTabs() : await availableSystemTabs();
+  const tabs = activeTarget === 'Managed Chromium' ? await targetTabs() : await availableSystemTabs();
   let match;
   if (input.tabId !== undefined) match = tabs.find((tab) => String(tab.id) === String(input.tabId));
   if (!match && typeof input.url === 'string') match = tabs.find((tab) => tab.url === input.url);
@@ -153,11 +145,11 @@ async function selectTarget(input = {}) {
   }
   if (!match && tabs.length) match = tabs.find((tab) => tab.active) ?? tabs[0];
 
-  if (activeTarget !== 'DUYA') {
+  if (activeTarget !== 'Managed Chromium') {
     if (input.tabId !== undefined && !match) throw new Error(`No available system-browser tab matches tabId ${input.tabId}.`);
     if (typeof input.url === 'string' && !match) throw new Error(`No available system-browser tab matches URL ${input.url}.`);
     if (!match) {
-      const health = await daemonJson('/ping');
+      const health = await pluginBridgeJson('/ping');
       if (!health.extensionConnected) throw new Error('No Chrome/Edge Browser Bridge extension is connected.');
       const created = await extensionCommand({ action: 'tabs', op: 'new', ...(input.url ? { url: input.url } : {}) });
       selectedSystemTab = created.tabId ?? null;
@@ -173,53 +165,53 @@ async function selectTarget(input = {}) {
 
   if (!match && input.url) {
     await navigate(String(input.url));
-    const state = webviewTabs.get(activeWebviewTab) ?? {};
-    match = { id: activeWebviewTab, ...state };
+    const state = managedTabs.get(activeManagedTab) ?? {};
+    match = { id: activeManagedTab, ...state };
   }
-  if (match) activeWebviewTab = String(match.id);
-  if (previousTarget !== activeTarget || previousWebviewTab !== activeWebviewTab) stateRead = false;
-  return { browser: activeTarget, ...(match ?? { id: activeWebviewTab, ...(webviewTabs.get(activeWebviewTab) ?? {}) }) };
+  if (match) activeManagedTab = String(match.id);
+  if (previousTarget !== activeTarget || previousManagedTab !== activeManagedTab) stateRead = false;
+  return { browser: activeTarget, ...(match ?? { id: activeManagedTab, ...(managedTabs.get(activeManagedTab) ?? {}) }) };
 }
 
 async function navigate(url) {
   assertInitialized();
   if (typeof url !== 'string' || !url.trim()) throw new Error('navigate(url) requires a non-empty URL.');
-  if (activeTarget !== 'DUYA') {
+  if (activeTarget !== 'Managed Chromium') {
     const result = await extensionCommand({ action: 'navigate', url });
     if (result.tabId !== undefined) selectedSystemTab = result.tabId;
     return result;
   }
-  await webviewCdp('Page.enable');
-  await webviewCdp('Page.navigate', { url });
-  webviewTabs.set(activeWebviewTab, { url, title: '' });
-  await daemonJson('/webview-wait-load', { sessionId: currentTabId(), timeoutMs: 10_000 }, 15_000).catch(() => null);
+  await managedCdp('Page.enable');
+  await managedCdp('Page.navigate', { url });
+  managedTabs.set(activeManagedTab, { url, title: '' });
+  await managedBrowser.waitForLoad(managedTabId(), 10_000).catch(() => null);
   return await snapshot();
 }
 
 async function newTab(url) {
   assertInitialized();
-  if (activeTarget !== 'DUYA') {
+  if (activeTarget !== 'Managed Chromium') {
     const result = await extensionCommand({ action: 'tabs', op: 'new', ...(url ? { url } : {}) });
     selectedSystemTab = result.tabId ?? null;
     stateRead = false;
     return result;
   }
-  const tabId = `tab_${++webviewTabCounter}`;
-  webviewTabs.set(tabId, { url: url ?? 'about:blank', title: '' });
-  activeWebviewTab = tabId;
+  const tabId = `tab_${++managedTabCounter}`;
+  managedTabs.set(tabId, { url: url ?? 'about:blank', title: '' });
+  activeManagedTab = tabId;
   stateRead = false;
-  await webviewCdp('Page.enable', {}, tabId);
+  await managedCdp('Page.enable', {}, tabId);
   if (url) {
-    await webviewCdp('Page.navigate', { url }, tabId);
-    webviewTabs.set(tabId, { url, title: '' });
-    await daemonJson('/webview-wait-load', { sessionId: currentTabId(), timeoutMs: 10_000 }, 15_000).catch(() => null);
+    await managedCdp('Page.navigate', { url }, tabId);
+    managedTabs.set(tabId, { url, title: '' });
+    await managedBrowser.waitForLoad(tabId, 10_000).catch(() => null);
   }
   return { id: tabId, url: url ?? 'about:blank' };
 }
 
 async function closeTab(target) {
   assertInitialized();
-  if (activeTarget !== 'DUYA') {
+  if (activeTarget !== 'Managed Chromium') {
     const tabId = target ?? selectedSystemTab;
     if (tabId === null || tabId === undefined) throw new Error('No selected system-browser tab to close.');
     const result = await extensionCommand({ action: 'tabs', op: 'close', tabId });
@@ -228,30 +220,30 @@ async function closeTab(target) {
     stateRead = false;
     return result;
   }
-  const tabId = target === undefined ? activeWebviewTab : String(target);
-  if (!webviewTabs.has(tabId)) throw new Error(`No DUYA tab matches ${tabId}.`);
-  await daemonJson('/webview-close', { sessionId: tabId === 'tab_0' ? sessionId : `${sessionId}::${tabId}` });
-  webviewTabs.delete(tabId);
-  if (webviewTabs.size === 0) webviewTabs = new Map([['tab_0', { url: 'about:blank', title: '' }]]);
-  activeWebviewTab = webviewTabs.keys().next().value ?? 'tab_0';
+  const tabId = target === undefined ? activeManagedTab : String(target);
+  if (!managedTabs.has(tabId)) throw new Error(`No Managed Chromium tab matches ${tabId}.`);
+  await managedBrowser.closeTab(tabId);
+  managedTabs.delete(tabId);
+  if (managedTabs.size === 0) managedTabs = new Map([['tab_0', { url: 'about:blank', title: '' }]]);
+  activeManagedTab = managedTabs.keys().next().value ?? 'tab_0';
   stateRead = false;
-  return { closed: tabId, active: activeWebviewTab };
+  return { closed: tabId, active: activeManagedTab };
 }
 
 async function snapshot(internalStateRead = false) {
   if (!internalStateRead) assertInitialized();
   const expression = `(() => ({ url: location.href, title: document.title, text: (document.body?.innerText || '').slice(0, 30000), elements: Array.from(document.querySelectorAll('a,button,input,textarea,select,[role=button]')).filter(e => { const r=e.getBoundingClientRect(); return r.width>0 && r.height>0; }).slice(0,200).map(e => ({tag:e.tagName.toLowerCase(), role:e.getAttribute('role'), text:(e.innerText||e.getAttribute('aria-label')||e.value||'').trim().slice(0,300), href:e.href||undefined, type:e.type||undefined, placeholder:e.placeholder||undefined})) }))()`;
-  if (activeTarget !== 'DUYA') return await extensionCommand({ action: 'evaluate', script: expression });
-  const result = await webviewCdp('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
+  if (activeTarget !== 'Managed Chromium') return await extensionCommand({ action: 'evaluate', script: expression });
+  const result = await managedCdp('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
   return result?.result?.value ?? null;
 }
 
 async function click(selector) {
   assertInitialized();
   if (typeof selector !== 'string' || !selector) throw new Error('click(selector) requires a CSS selector.');
-  if (activeTarget !== 'DUYA') return extensionCommand({ action: 'click', selector });
+  if (activeTarget !== 'Managed Chromium') return extensionCommand({ action: 'click', selector });
   const expression = `(() => { const e=document.querySelector(${JSON.stringify(selector)}); if(!e) throw new Error('Element not found: '+${JSON.stringify(selector)}); e.click(); return {clicked:${JSON.stringify(selector)}}; })()`;
-  const result = await webviewCdp('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
+  const result = await managedCdp('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
   if (result?.exceptionDetails) throw new Error(result.exceptionDetails.text);
   return result?.result?.value;
 }
@@ -259,50 +251,50 @@ async function click(selector) {
 async function type(selector, text) {
   assertInitialized();
   if (typeof selector !== 'string' || !selector) throw new Error('type(selector, text) requires a CSS selector.');
-  if (activeTarget !== 'DUYA') return extensionCommand({ action: 'type', selector, text: String(text) });
+  if (activeTarget !== 'Managed Chromium') return extensionCommand({ action: 'type', selector, text: String(text) });
   const expression = `(() => { const e=document.querySelector(${JSON.stringify(selector)}); if(!e) throw new Error('Element not found: '+${JSON.stringify(selector)}); e.focus(); e.value=${JSON.stringify(String(text))}; e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true})); return {typed:${JSON.stringify(selector)}}; })()`;
-  const result = await webviewCdp('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
+  const result = await managedCdp('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
   if (result?.exceptionDetails) throw new Error(result.exceptionDetails.text);
   return result?.result?.value;
 }
 
 async function pressKey(key) {
   assertInitialized();
-  if (activeTarget !== 'DUYA') return extensionCommand({ action: 'press_key', key });
+  if (activeTarget !== 'Managed Chromium') return extensionCommand({ action: 'press_key', key });
   const keyName = String(key);
-  await webviewCdp('Input.dispatchKeyEvent', { type: 'keyDown', key: keyName });
-  await webviewCdp('Input.dispatchKeyEvent', { type: 'keyUp', key: keyName });
+  await managedCdp('Input.dispatchKeyEvent', { type: 'keyDown', key: keyName });
+  await managedCdp('Input.dispatchKeyEvent', { type: 'keyUp', key: keyName });
   return { pressed: keyName };
 }
 
 async function scroll({ direction = 'down', amount = 300 } = {}) {
   assertInitialized();
   const delta = Math.max(-5000, Math.min(5000, Number(amount) || 300));
-  if (activeTarget !== 'DUYA') return extensionCommand({ action: 'scroll', direction, amount: delta });
+  if (activeTarget !== 'Managed Chromium') return extensionCommand({ action: 'scroll', direction, amount: delta });
   const directions = { up: [0, -delta], down: [0, delta], left: [-delta, 0], right: [delta, 0] };
   const [deltaX, deltaY] = directions[direction] ?? directions.down;
-  await webviewCdp('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 0, y: 0, deltaX, deltaY });
+  await managedCdp('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 0, y: 0, deltaX, deltaY });
   return { direction, amount: delta };
 }
 
 async function screenshot() {
   assertInitialized();
-  if (activeTarget !== 'DUYA') {
+  if (activeTarget !== 'Managed Chromium') {
     const result = await extensionCommand({ action: 'screenshot' });
     const data = typeof result === 'string' ? result : result?.data;
     const base64 = typeof data === 'string' ? data : data?.data;
     return base64 ? `data:image/png;base64,${base64}` : null;
   }
-  const result = await webviewCdp('Page.captureScreenshot', { format: 'png' });
+  const result = await managedCdp('Page.captureScreenshot', { format: 'png' });
   return result?.data ? `data:image/png;base64,${result.data}` : null;
 }
 
 async function goBack() {
   assertInitialized();
-  if (activeTarget !== 'DUYA') return extensionCommand({ action: 'go_back' });
-  const history = await webviewCdp('Page.getNavigationHistory');
+  if (activeTarget !== 'Managed Chromium') return extensionCommand({ action: 'go_back' });
+  const history = await managedCdp('Page.getNavigationHistory');
   const current = history?.currentIndex ?? 0;
-  if (current > 0) await webviewCdp('Page.navigateToHistoryEntry', { entryId: history.entries[current - 1].id });
+  if (current > 0) await managedCdp('Page.navigateToHistoryEntry', { entryId: history.entries[current - 1].id });
   return await snapshot();
 }
 
@@ -313,13 +305,20 @@ const cua = {
   },
   async getState() {
     if (!docsRead) throw new Error('Call await cua.getApiDocs() first.');
-    const daemon = await daemonJson('/ping');
     const tabs = await targetTabs();
+    const health = activeTarget === 'Managed Chromium' ? await managedBrowser.health() : await pluginBridgeJson('/ping');
     try {
       const page = await snapshot(true);
       stateRead = true;
       stateReadCall = currentJsCall;
-      return { target: activeTarget, daemon: { ok: daemon.ok, extensionConnected: daemon.extensionConnected ?? false }, tabs, page };
+      return {
+        target: activeTarget,
+        ...(activeTarget === 'Managed Chromium'
+          ? { managedBrowser: { available: health.ok, running: health.running, openTabs: health.openTabs } }
+          : { extensionConnected: health.extensionConnected === true }),
+        tabs,
+        page,
+      };
     } catch (err) {
       stateRead = false;
       throw err;
@@ -327,11 +326,14 @@ const cua = {
   },
   browser: {
     async targets() {
-      const daemon = await daemonJson('/ping');
+      const [managed, bridge] = await Promise.all([
+        managedBrowser.health(),
+        pluginBridgeJson('/ping').catch(() => ({ extensionConnected: false })),
+      ]);
       return [
-        { browser: 'DUYA', available: daemon.ok === true, kind: 'in-app agent webview' },
-        { browser: 'Chrome', available: daemon.extensionConnected === true, kind: 'Browser Bridge session' },
-        { browser: 'Edge', available: daemon.extensionConnected === true, kind: 'Browser Bridge session' },
+        { browser: 'Managed Chromium', available: managed.ok === true, kind: 'plugin-managed Chromium process' },
+        { browser: 'Chrome', available: bridge.extensionConnected === true, kind: 'Browser Bridge session' },
+        { browser: 'Edge', available: bridge.extensionConnected === true, kind: 'Browser Bridge session' },
       ];
     },
     async selectTarget(input) { assertInitialized(); return selectTarget(input); },
@@ -440,7 +442,7 @@ function toolDefinitions() {
   return [
     {
       name: 'js',
-      description: 'Run JavaScript in the persistent DUYA CUA session. After startup/reset, the first js call must contain only await cua.getApiDocs(), the next only await cua.getState(). Inspect state in a separate call after switching targets or tabs before taking browser actions.',
+      description: 'Run JavaScript in the persistent Browser CUA session. After startup/reset, the first js call must contain only await cua.getApiDocs(), the next only await cua.getState(). Inspect state in a separate call after switching targets or tabs before taking browser actions.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -533,7 +535,24 @@ async function dispatch(message) {
 
 createRepl();
 let inputBuffer = '';
+let shutdownPromise;
+function shutdown() {
+  if (!shutdownPromise) {
+    shutdownPromise = (async () => {
+      try {
+        const health = await pluginBridgeJson('/ping', undefined, 1_000);
+        if (health.extensionConnected) await extensionCommand({ action: 'close_session' }, 5_000);
+      } catch { /* Extension may already be unavailable. */ }
+      await Promise.allSettled([bridgeService.close(), managedBrowser.close()]);
+    })();
+  }
+  return shutdownPromise;
+}
 process.stdin.setEncoding('utf8');
+process.stdin.on('end', () => { void shutdown(); });
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.once(signal, () => { void shutdown().finally(() => process.exit(0)); });
+}
 process.stdin.on('data', (chunk) => {
   inputBuffer += chunk;
   while (true) {
