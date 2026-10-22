@@ -38,6 +38,7 @@ test('legacy exporter includes action data and falls back to the supplied asset 
   assert.equal(bundle.canvases[0].elements[0].elementKind, 'native/connector');
   assert.deepEqual(bundle.canvases[0].elements[0].config.source, { kind: 'bound', nodeId: 'a', bindingPoint: { u: 0.5, v: 1 } });
   assert.equal(bundle.canvases[0].actions[0].action_type, 'connector.create');
+  assert.equal(bundle.canvases[0].actions[0].actionType, 'connector.create');
   assert.equal(bundle.assets.length, 1);
   assert.equal(bundle.assets[0].assetId, assetId);
   assert.equal(Buffer.from(bundle.assets[0].base64, 'base64').toString(), 'image bytes');

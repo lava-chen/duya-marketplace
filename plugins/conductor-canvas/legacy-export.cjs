@@ -95,7 +95,9 @@ try {
         createdAt: row.created_at, updatedAt: row.updated_at },
       elements, widgets,
       actions: rows('conductor_actions', row.id).map((action) => ({ ...action,
-        payload: parse(action.payload, null), resultPatch: parse(action.result_patch, null) })),
+        canvasId: action.canvas_id, widgetId: action.widget_id, actionType: action.action_type,
+        payload: parse(action.payload, null), resultPatch: parse(action.result_patch, null),
+        mergedFrom: action.merged_from, undoneAt: action.undone_at })),
     };
   });
   database.exec('COMMIT');
