@@ -27,9 +27,22 @@ Canvas IDs are explicit tool arguments; never infer one from another chat.
   the returned positions.
 - `canvas_undo` and `canvas_redo` reverse element edits on the selected board.
 
+## Visual feedback and rich elements
+
+- Use `canvas_execute_action` for native domain actions, widgets, connectors,
+  batches with named references, alignment, and grid layout. Dynamic widget
+  source runs in the plugin editor's isolated widget sandbox.
+- `canvas_project_database` owns the sources, properties, records, views, and
+  query data used by database elements. It does not call DUYA database IPC.
+- When the intended canvas is open in the Mini App, use
+  `canvas_capture_request` with `scope: "viewport"`, `"full"`, `"element"`,
+  or `"region"` to inspect actual rendering. If the editor is closed, report
+  that requirement instead of treating a snapshot JSON object as an image.
+- User edits and agent tools share plugin-owned storage. Re-read the snapshot
+  after a conflict before applying another change.
+
 ## Moving canvas data
 
 Use `canvas_export` to produce a portable snapshot. `canvas_import` accepts a
 snapshot object and creates a separate canvas, preserving supported element
-IDs, positions, content, and configuration. Confirm the destination name with
-the user before importing a large board.
+IDs, positions, content, and configuration. Use the destination requested by the user; preserve the source export for review.

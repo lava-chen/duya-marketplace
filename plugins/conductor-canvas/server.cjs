@@ -145,13 +145,13 @@ const object = (properties, required = []) => ({ type: 'object', properties, req
 const tools = [
   { name: 'canvas_manage', description: 'List canvases, read the selected canvas, or select a canvas.', inputSchema: object({ action: { type: 'string', enum: ['list', 'get_current', 'switch'] }, canvasId: string }, ['action']) },
   { name: 'canvas_create', description: 'Create a canvas and select it.', inputSchema: object({ name: string, description: string, projectPath: { type: ['string', 'null'] } }) },
-  { name: 'canvas_update_metadata', description: 'Update canvas favorite state, tags, and group assignment.', inputSchema: object({ canvasId: string, isFavorite: { type: 'boolean' }, tags: { type: 'array', items: string }, groupId: string }) },
+  { name: 'canvas_update_metadata', description: 'Update canvas favorite state, tags, and group assignment.', inputSchema: object({ canvasId: string, isFavorite: { type: 'boolean' }, tags: { type: 'array', items: string }, groupId: { type: ['string', 'null'] } }) },
   { name: 'canvas_group_list', description: 'List canvas groups.', inputSchema: object({ projectPath: { type: ['string', 'null'] } }) },
   { name: 'canvas_group_create', description: 'Create a canvas group.', inputSchema: object({ name: string, projectPath: { type: ['string', 'null'] } }, ['name']) },
   { name: 'canvas_group_rename', description: 'Rename a canvas group.', inputSchema: object({ groupId: string, name: string }, ['groupId', 'name']) },
   { name: 'canvas_group_delete', description: 'Delete a canvas group and unassign its canvases.', inputSchema: object({ groupId: string }, ['groupId']) },
   { name: 'canvas_rename', description: 'Rename a canvas.', inputSchema: object({ canvasId: string, name: string }, ['name']) },
-  { name: 'canvas_update', description: 'Update canvas metadata and saved layout settings.', inputSchema: object({ canvasId: string, name: string, description: string, layoutConfig: { type: 'object' }, sortOrder: number, isFavorite: { type: 'boolean' }, groupId: { type: ['string', 'null'] }, projectPath: { type: ['string', 'null'] }, tags: { type: 'array', items: string } }, ['canvasId']) },
+  { name: 'canvas_update', description: 'Update canvas metadata and saved layout settings.', inputSchema: object({ canvasId: string, name: string, description: { type: ['string', 'null'] }, layoutConfig: { type: 'object' }, sortOrder: number, isFavorite: { type: 'boolean' }, groupId: { type: ['string', 'null'] }, projectPath: { type: ['string', 'null'] }, tags: { type: 'array', items: string } }, ['canvasId']) },
   { name: 'canvas_delete', description: 'Delete a canvas and all of its elements.', inputSchema: object({ canvasId: string }, ['canvasId']) },
   { name: 'canvas_get_snapshot', description: 'Read one canvas with all positions and element content.', inputSchema: object({ canvasId: string }) },
   { name: 'canvas_execute_action', description: 'Apply a Conductor domain action to a canvas, preserving native element fields and freeform positions.', inputSchema: { type: 'object', properties: { action: { type: 'object', properties: {}, additionalProperties: true } }, required: ['action'], additionalProperties: false } },
@@ -577,7 +577,7 @@ async function applyConductorAction(store, action, options = {}) {
   return { success: true, result: value, snapshot: snapshot(canvas) };
 }
 
-const AGENT_NATIVE_TYPES = new Set(['text', 'sticky', 'shape', 'table', 'link', 'document', 'section', 'frame', 'database', 'image', 'file']);
+const AGENT_NATIVE_TYPES = new Set(['text', 'sticky', 'shape', 'table', 'link', 'document', 'section', 'frame', 'database', 'image', 'file', 'pdf']);
 const MAX_AGENT_ACTIONS = 12;
 
 function isRecord(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
@@ -595,7 +595,7 @@ function validateAgentPosition(input, partial = false) {
   const position = {};
   for (const key of allowed) {
     if (input[key] === undefined && partial) continue;
-    const value = Number(input[key]);
+    const value = input[key] === undefined && (key === 'zIndex' || key === 'rotation') ? 0 : Number(input[key]);
     if (!Number.isFinite(value)) fail(`Agent position ${key} must be finite.`);
     if ((key === 'x' || key === 'y') && Math.abs(value) > 10_000) fail(`Agent position ${key} is out of range.`);
     if ((key === 'w' || key === 'h') && (value <= 0 || value > 4_000)) fail(`Agent position ${key} must be between 0 and 4,000.`);

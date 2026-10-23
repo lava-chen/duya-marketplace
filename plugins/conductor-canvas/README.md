@@ -5,7 +5,7 @@ persistence, assets, project database, MCP tool set, and Mini App. It does not
 import or call DUYA's built-in Conductor implementation.
 
 **Migration status:** The plugin provides an independent canvas editor and MCP
-backend. DUYA still contains its former Canvas implementation. Existing data is
+backend. The paired DUYA migration branch removes its former Canvas implementation. Existing data is
 copied only through the explicit exporter/importer below; installing the plugin
 never reads or deletes the old database. See [migration boundary](MIGRATION.md).
 
@@ -27,6 +27,26 @@ temporary tab. Chrome or Chromium is optional; when it is not on PATH, set
 managed Chromium transport is vendored in this plugin so Canvas remains
 independently installable.
 
+## Agent and visual feedback
+
+DUYA agents use this plugin through its MCP tool inventory and workflow skill.
+No Canvas-specific agent mode or executor is required in DUYA. The editor also
+has an optional Canvas-local composer: configure its OpenAI-compatible model in
+Canvas Settings to request validated edits. Requests run outside the canvas
+write lock; a snapshot revision check prevents applying an answer over newer
+user edits. Changes are applied to a copy and committed together.
+
+`canvas_capture_request` returns a real PNG of the requested canvas viewport,
+element, region, or full content. Keep that canvas open in the Mini App; its
+plugin renderer handles the capture through `canvas_capture_poll` and
+`canvas_capture_complete`. If no matching editor is open, the request reports
+an error after 20 seconds. The capture transport and queue are plugin-owned.
+
+Canvas-to-canvas links load the destination editor. HTTP(S) links use the
+generic App host's external link behavior. Legacy chat-session references are
+preserved and can be copied; standalone Apps do not receive access to DUYA's
+private chat store or a chat-navigation capability.
+
 ## MCP tools
 
 - `canvas_manage`, `canvas_create`, `canvas_rename`, `canvas_update`, and
@@ -46,6 +66,8 @@ independently installable.
   provider. The status and model-list responses never include the API key.
 - `canvas_refine_call`: send one widget data refinement request to the
   configured provider. The prompt and response validation live in this plugin.
+- `canvas_agent_request`: ask the optional configured model to edit this canvas.
+- `canvas_capture_request`: capture the currently open editor as a PNG.
 - `canvas_export`, `canvas_import`: move canvases through portable JSON,
   including referenced assets.
 - `canvas_import_bundle`: import collections exported by `legacy-export.cjs`,

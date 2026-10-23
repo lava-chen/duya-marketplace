@@ -1,6 +1,14 @@
+import { en, zh } from '../translations';
+
+function translate(key: string, values?: Record<string, unknown>): string {
+  const language = document.documentElement.lang || navigator.language;
+  const labels = language.toLowerCase().startsWith('zh') ? zh : en;
+  const text = labels[key] ?? en[key] ?? key.split('.').at(-1) ?? key;
+  return text.replace(/\{(\w+)\}/g, (match, name: string) =>
+    values && Object.hasOwn(values, name) ? String(values[name]) : match);
+}
+
+const translation = { t: translate };
 export function useTranslation() {
-  return { t: (key: string, values?: Record<string, unknown>) => {
-    const label = key.split(".").at(-1)?.replace(/([A-Z])/g, " $1").replace(/[-_]/g, " ") || key;
-    return Object.entries(values || {}).reduce((text, [name, value]) => text.replace(`{${name}}`, String(value)), label);
-  } };
+  return translation;
 }

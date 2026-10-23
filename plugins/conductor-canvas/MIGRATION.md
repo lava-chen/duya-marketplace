@@ -20,15 +20,19 @@ code is retained as data and is never executed by the importer. Installation
 does not silently read, change, or delete the former database or its asset
 files.
 
-## Remaining parity work
+## Runtime transition
 
-- Finish matching the former editor's rich interaction details and review the
-  standalone editor against representative migrated canvases.
-- Complete installed desktop end-to-end review for opening, editing, reload,
-  capability permissions, and agent MCP access.
-- Switch the DUYA entry point to the installed plugin only after migrated data
-  and feature parity have been reviewed; remove the former implementation
-  after that transition is complete.
+The paired DUYA branch removes the former Conductor package, dedicated UI,
+executor, modes, IPC, and database runtime. It retains historical database
+files and migrations; the plugin importer owns the explicit copy operation.
+DUYA hosts this editor through the same install, grant, sandbox, MCP, hot
+reload, and shutdown interfaces used by other plugin Apps.
+
+Real desktop acceptance and platform-specific limitations are recorded in the
+paired migration PRs. Import representative existing canvases and retain the
+source database while reviewing the copied data. Standalone Apps preserve
+legacy chat-session references as links to copy; they cannot browse or switch
+DUYA's private chat sessions.
 
 The plugin's project database preserves typed sources, properties, records,
 views, and query behavior behind a plugin-owned JSON store. Its request
