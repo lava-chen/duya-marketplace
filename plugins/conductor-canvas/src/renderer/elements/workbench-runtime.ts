@@ -145,6 +145,99 @@ const RUNTIME_SCRIPT = /* js */ `(function () {
 })();
 `;
 
+/** Sandbox-local renderer: the host receives only a PNG and never reads the
+ * opaque-origin frame's document. This script is also added to static widget
+ * srcdocs so all plugin-owned widgets can answer the capture handshake. */
+const WIDGET_CAPTURE_SCRIPT = /* js */ `(function () {
+  'use strict';
+  window.addEventListener('message', function (event) {
+    var request = event.data;
+    if (event.source !== window.parent || !request || request.type !== 'duya:canvas-capture-request' || typeof request.requestId !== 'string') return;
+    capture(request.requestId);
+  });
+
+  function capture(requestId) {
+    try {
+      var sources = [document.documentElement].concat(Array.prototype.slice.call(document.querySelectorAll('*')));
+      var clone = document.documentElement.cloneNode(true);
+      var copies = [clone].concat(Array.prototype.slice.call(clone.querySelectorAll('*')));
+      var warnings = [];
+      var jobs = [];
+      for (var i = 0; i < sources.length; i++) {
+        var source = sources[i];
+        var copy = copies[i];
+        var computed = window.getComputedStyle(source);
+        for (var j = 0; j < computed.length; j++) {
+          var property = computed[j];
+          var value = computed.getPropertyValue(property);
+          if (/url\((?![\"']?(?:data:|#))/i.test(value)) {
+            value = value.replace(/url\((?:\"[^\"]*\"|'[^']*'|[^)]*)\)/gi, 'none');
+            warnings.push('Some widget background images could not be embedded.');
+          }
+          copy.style.setProperty(property, value, 'important');
+        }
+        if (source instanceof HTMLCanvasElement) {
+          try {
+            var image = document.createElement('img');
+            image.src = source.toDataURL('image/png');
+            image.setAttribute('style', copy.getAttribute('style') || '');
+            copy.replaceWith(image);
+          } catch (error) { warnings.push('A widget drawing could not be exported.'); }
+        } else if (source instanceof HTMLImageElement && (source.currentSrc || source.src)) {
+          (function (originalImage, clonedImage) {
+            jobs.push(fetch(originalImage.currentSrc || originalImage.src, { mode: 'cors', credentials: 'same-origin' })
+              .then(function (response) { if (!response.ok) throw new Error('image request failed'); return response.blob(); })
+              .then(function (blob) { return new Promise(function (resolve, reject) {
+                var reader = new FileReader(); reader.onload = function () { resolve(String(reader.result)); };
+                reader.onerror = reject; reader.readAsDataURL(blob);
+              }); })
+              .then(function (dataUrl) { clonedImage.src = dataUrl; clonedImage.removeAttribute('srcset'); })
+              .catch(function () { clonedImage.removeAttribute('src'); warnings.push('A widget image could not be embedded.'); }));
+          })(source, copy);
+        }
+      }
+      Promise.all(jobs).then(function () {
+        clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+        clone.style.setProperty('width', window.innerWidth + 'px', 'important');
+        clone.style.setProperty('height', window.innerHeight + 'px', 'important');
+        clone.style.setProperty('overflow', 'hidden', 'important');
+        var html = new XMLSerializer().serializeToString(clone);
+        var width = Math.max(1, window.innerWidth);
+        var height = Math.max(1, window.innerHeight);
+        var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '"><foreignObject x="0" y="0" width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml">' + html + '</div></foreignObject></svg>';
+        var rendered = new Image();
+        rendered.onload = function () {
+          var canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
+          var context = canvas.getContext('2d'); if (!context) throw new Error('Canvas context unavailable');
+          context.drawImage(rendered, 0, 0, width, height);
+          if (warnings.length) {
+            context.fillStyle = 'rgba(35,35,35,.88)'; context.fillRect(0, 0, width, 22);
+            context.fillStyle = '#fff'; context.font = '11px sans-serif';
+            context.fillText(('Widget capture note: ' + warnings.join(' ')).slice(0, 180), 6, 15, Math.max(1, width - 12));
+          }
+          var dataUrl = canvas.toDataURL('image/png');
+          if (dataUrl.length > 8 * 1024 * 1024) throw new Error('Widget screenshot exceeds the 6 MiB limit.');
+          window.parent.postMessage({ type: 'duya:canvas-capture-response', requestId: requestId, dataUrl: dataUrl }, '*');
+        };
+        rendered.onerror = function () { replyError(requestId, 'Widget DOM could not be rendered.'); };
+        rendered.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+      }).catch(function () { replyError(requestId, 'Widget resources could not be rendered.'); });
+    } catch (error) { replyError(requestId, String(error && error.message || error)); }
+  }
+
+  function replyError(requestId, message) {
+    window.parent.postMessage({ type: 'duya:canvas-capture-response', requestId: requestId, error: message }, '*');
+  }
+})();`;
+
+export function injectWidgetCaptureRuntime(srcdoc: string): string {
+  if (srcdoc.includes('data-duya-capture-runtime="v1"')) return srcdoc;
+  const script = `<script data-duya-capture-runtime="v1">${WIDGET_CAPTURE_SCRIPT}</script>`;
+  if (/<\/body\s*>/i.test(srcdoc)) return srcdoc.replace(/<\/body\s*>/i, `${script}</body>`);
+  if (/<\/html\s*>/i.test(srcdoc)) return srcdoc.replace(/<\/html\s*>/i, `${script}</html>`);
+  return `${srcdoc}${script}`;
+}
+
 /**
  * Inline `<script>` extraction mirrors the chat widget path
  * (`buildReceiverSrcdoc`): agent-authored strategy scripts are stripped by the
@@ -213,6 +306,7 @@ ${seedScript}
 </head>
 <body>${sanitized}
 <script>${RUNTIME_SCRIPT}</script>
+<script data-duya-capture-runtime="v1">${WIDGET_CAPTURE_SCRIPT}</script>
 ${agentScriptsHtml}
 </body>
 </html>`;

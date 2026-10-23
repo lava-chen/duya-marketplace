@@ -11,6 +11,7 @@ import { XIcon, WarningIcon, SpinnerGapIcon, RobotIcon } from "@/components/icon
 import { GRID_PX } from "../domain/canvas/units";
 import {
   buildWorkbenchSrcdoc,
+  injectWidgetCaptureRuntime,
   WORKBENCH_ACTION_MESSAGE,
   WORKBENCH_DATA_MESSAGE,
   type WorkbenchActionPayload,
@@ -161,7 +162,7 @@ export function WidgetShell({ widget, dynamicDef }: WidgetShellProps) {
   // them without the builtin widget shell/header. The srcdoc carries the
   // workbench runtime (live data + action bridge) when sourceCode exists.
   if (dynamicDef?.renderMode === "iframe" && dynamicDef.sanitizedHtml) {
-    const srcdoc = workbenchSrcdoc ?? dynamicDef.sanitizedHtml;
+    const srcdoc = workbenchSrcdoc ?? injectWidgetCaptureRuntime(dynamicDef.sanitizedHtml);
     return (
       <div
         ref={captureRef}

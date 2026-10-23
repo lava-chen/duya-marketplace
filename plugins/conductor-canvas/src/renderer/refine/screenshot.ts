@@ -317,7 +317,9 @@ async function renderDomSnapshot(
   const sourceWindow = source.ownerDocument.defaultView;
   if (!sourceWindow) throw new Error("Cannot render a detached Canvas document.");
   const warnings: string[] = [];
+  const resourceCache = new Map<string, Promise<string>>();
   const pairs = sourceNodes.map((node, index) => [node, cloneNodes[index]] as const);
+  const resourceTasks: Promise<void>[] = [];
 
   for (const [original, copy] of pairs) {
     if (original instanceof HTMLElement && original.dataset.captureIgnore === "") {
@@ -328,7 +330,7 @@ async function renderDomSnapshot(
     const style = (copy as HTMLElement | SVGElement).style;
     for (const property of computed) {
       let value = normalizeHtml2CanvasColors(computed.getPropertyValue(property));
-      if (value.includes("url(")) value = await inlineCssUrls(value, warnings);
+      if (value.includes("url(")) value = await inlineCssUrls(value, warnings, resourceCache);
       style.setProperty(property, value, "important");
     }
     if (original instanceof HTMLInputElement && copy instanceof HTMLInputElement) {
@@ -340,10 +342,11 @@ async function renderDomSnapshot(
     } else if (original instanceof HTMLSelectElement && copy instanceof HTMLSelectElement) {
       copy.value = original.value;
     }
-    await copyPaintResource(original, copy, warnings);
+    resourceTasks.push(copyPaintResource(original, copy, warnings, resourceCache));
     copyPseudoElement(original, copy, "::before", sourceWindow);
     copyPseudoElement(original, copy, "::after", sourceWindow);
   }
+  await Promise.all(resourceTasks);
 
   clone.style.setProperty("width", `${sourceWidth}px`, "important");
   clone.style.setProperty("height", `${sourceHeight}px`, "important");
@@ -415,11 +418,28 @@ async function renderDomSnapshot(
   return canvas;
 }
 
-async function copyPaintResource(original: Element, copy: Element, warnings: string[]): Promise<void> {
-  if (original instanceof HTMLImageElement && copy instanceof HTMLImageElement) {
+async function copyPaintResource(original: Element, copy: Element, warnings: string[], resourceCache: Map<string, Promise<string>>): Promise<void> {
+  if (original instanceof HTMLIFrameElement && copy instanceof HTMLIFrameElement) {
+    if (original.hasAttribute("srcdoc") && original.sandbox.contains("allow-scripts")) {
+      try {
+        const dataUrl = await requestWidgetFrameCapture(original);
+        const image = original.ownerDocument.createElement("img");
+        image.src = dataUrl;
+        image.alt = "Captured sandbox widget";
+        image.setAttribute("style", (copy as HTMLElement).getAttribute("style") || "");
+        copy.replaceWith(image);
+      } catch {
+        replaceWithResourceNotice(copy, "Sandbox widget screenshot unavailable");
+        warnings.push("Sandbox widget capture was unavailable; its frame is marked in the image.");
+      }
+    } else {
+      replaceWithResourceNotice(copy, "Embedded frame content omitted");
+      warnings.push("A non-widget embedded frame cannot be captured from its origin.");
+    }
+  } else if (original instanceof HTMLImageElement && copy instanceof HTMLImageElement) {
     if (original.currentSrc || original.src) {
       try {
-        copy.src = await imageUrlToPng(original.currentSrc || original.src);
+        copy.src = await imageUrlToPng(original.currentSrc || original.src, resourceCache);
         copy.removeAttribute("srcset");
         await copy.decode().catch(() => {});
       } catch {
@@ -431,7 +451,7 @@ async function copyPaintResource(original: Element, copy: Element, warnings: str
     const source = original.href.baseVal || original.getAttribute("xlink:href") || "";
     if (source && !source.startsWith("#")) {
       try {
-        const embedded = await imageUrlToPng(new URL(source, original.ownerDocument.baseURI).href);
+        const embedded = await imageUrlToPng(new URL(source, original.ownerDocument.baseURI).href, resourceCache);
         copy.href.baseVal = embedded;
         copy.removeAttribute("xlink:href");
       } catch {
@@ -496,14 +516,14 @@ function copyPseudoElement(element: Element, clone: Element, pseudo: "::before" 
   if (pseudo === "::before") clone.prepend(span); else clone.append(span);
 }
 
-async function inlineCssUrls(value: string, warnings: string[]): Promise<string> {
+async function inlineCssUrls(value: string, warnings: string[], resourceCache: Map<string, Promise<string>>): Promise<string> {
   const matches = Array.from(value.matchAll(/url\((?:"([^"]*)"|'([^']*)'|([^)]*))\)/gi));
   let result = value;
   for (const match of matches) {
     const url = (match[1] ?? match[2] ?? match[3] ?? "").trim();
     if (!url || url.startsWith("#") || url.startsWith("data:")) continue;
     try {
-      const dataUrl = await resourceToDataUrl(new URL(url, document.baseURI).href);
+      const dataUrl = await resourceToDataUrl(new URL(url, document.baseURI).href, resourceCache);
       result = result.replace(match[0], `url("${dataUrl}")`);
     } catch {
       result = result.replace(match[0], "none");
@@ -513,8 +533,18 @@ async function inlineCssUrls(value: string, warnings: string[]): Promise<string>
   return result;
 }
 
-async function imageUrlToPng(url: string): Promise<string> {
-  const dataUrl = await resourceToDataUrl(url);
+function imageUrlToPng(url: string, resourceCache: Map<string, Promise<string>>): Promise<string> {
+  const key = `png:${url}`;
+  const cached = resourceCache.get(key);
+  if (cached) return cached;
+  const pending = rasterizeImageUrlToPng(url, resourceCache);
+  resourceCache.set(key, pending);
+  pending.catch(() => resourceCache.delete(key));
+  return pending;
+}
+
+async function rasterizeImageUrlToPng(url: string, resourceCache: Map<string, Promise<string>>): Promise<string> {
+  const dataUrl = await resourceToDataUrl(url, resourceCache);
   const image = await loadImage(dataUrl);
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, image.naturalWidth || image.width);
@@ -525,7 +555,30 @@ async function imageUrlToPng(url: string): Promise<string> {
   return canvas.toDataURL("image/png");
 }
 
-async function resourceToDataUrl(url: string): Promise<string> {
+async function resourceToDataUrl(url: string, resourceCache: Map<string, Promise<string>>): Promise<string> {
+  if (url.startsWith("data:")) {
+    const match = url.match(/^data:(image\/[\w.+-]+)(;[^,]*)?,(.*)$/is);
+    if (!match) throw new Error("Invalid data image");
+    const header = match[2] || "";
+    const payload = match[3];
+    if (!/^image\/(?:png|jpe?g|gif|webp|svg\+xml|bmp|avif)$/i.test(match[1]) || !payload) {
+      throw new Error("Invalid or oversized data image");
+    }
+    const decodedSize = /;base64/i.test(header)
+      ? Math.floor(payload.replace(/\s/g, "").length * 0.75)
+      : new TextEncoder().encode(decodeURIComponent(payload)).byteLength;
+    if (decodedSize > MAX_INLINE_RESOURCE_BYTES) throw new Error("Invalid or oversized data image");
+    return url;
+  }
+  const cached = resourceCache.get(url);
+  if (cached) return cached;
+  const pending = fetchResourceDataUrl(url);
+  resourceCache.set(url, pending);
+  try { return await pending; }
+  catch (error) { resourceCache.delete(url); throw error; }
+}
+
+async function fetchResourceDataUrl(url: string): Promise<string> {
   const response = await fetch(url, { mode: "cors", credentials: "same-origin" });
   if (!response.ok) throw new Error(`Resource request failed (${response.status})`);
   const blob = await response.blob();
@@ -535,6 +588,34 @@ async function resourceToDataUrl(url: string): Promise<string> {
     reader.onload = () => resolve(String(reader.result));
     reader.onerror = () => reject(reader.error || new Error("Could not read resource"));
     reader.readAsDataURL(blob);
+  });
+}
+
+function requestWidgetFrameCapture(frame: HTMLIFrameElement): Promise<string> {
+  const frameWindow = frame.contentWindow;
+  if (!frameWindow) return Promise.reject(new Error("Widget frame is not available."));
+  const requestId = crypto.randomUUID();
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => finish(new Error("Sandbox widget capture timed out.")), 1800);
+    const onMessage = (event: MessageEvent) => {
+      if (event.source !== frameWindow) return;
+      const message = event.data;
+      if (!message || message.type !== "duya:canvas-capture-response" || message.requestId !== requestId) return;
+      if (typeof message.error === "string") return finish(new Error(message.error));
+      if (typeof message.dataUrl !== "string") return finish(new Error("Sandbox widget returned no image."));
+      const match = message.dataUrl.match(/^data:image\/png;base64,([A-Za-z0-9+/=]+)$/);
+      if (!match || match[1].length * 0.75 > 6 * 1024 * 1024) {
+        return finish(new Error("Sandbox widget returned an invalid or oversized PNG."));
+      }
+      finish(undefined, message.dataUrl);
+    };
+    const finish = (error?: Error, result?: string) => {
+      window.clearTimeout(timeout);
+      window.removeEventListener("message", onMessage);
+      if (error) reject(error); else resolve(result!);
+    };
+    window.addEventListener("message", onMessage);
+    frameWindow.postMessage({ type: "duya:canvas-capture-request", requestId }, "*");
   });
 }
 
