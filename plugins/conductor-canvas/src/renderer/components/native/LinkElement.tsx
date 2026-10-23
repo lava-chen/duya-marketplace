@@ -223,9 +223,13 @@ export const LinkElement: React.FC<{ element: CanvasElement }> = ({ element }) =
   const open = useCallback(() => {
     setLinkMessage(null);
     if (config.linkType === "url" && config.url) {
-      void copyText(config.url).then((copied) => setLinkMessage(copied
-        ? "External sites cannot open from this Canvas sandbox. Link copied to clipboard."
-        : `This Canvas sandbox cannot open external sites. Copy this URL: ${config.url}`));
+      try {
+        const url = new URL(config.url);
+        if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Only HTTP and HTTPS links can open externally.');
+        window.open(url.href, '_blank', 'noopener,noreferrer');
+      } catch (error) {
+        setLinkMessage(error instanceof Error ? error.message : 'Invalid external URL.');
+      }
     }
     if (config.linkType === "canvas" && config.targetId) {
       window.dispatchEvent(new CustomEvent("plugin-canvas:open-canvas", { detail: config.targetId }));
