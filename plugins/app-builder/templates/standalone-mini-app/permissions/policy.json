@@ -1,0 +1,6 @@
+{
+  "defaultMode": "read",
+  "writeActionsRequireApproval": true,
+  "permissions": [{ "name": "notes.data" }],
+  "tiers": { "read": ["notes_list"], "write": ["notes_add"] }
+}
