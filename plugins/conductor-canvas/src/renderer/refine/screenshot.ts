@@ -1,8 +1,9 @@
 /**
  * Widget DOM screenshot for the iterative refinement loop.
  *
- * Lazy-loads `html2canvas` so the ~45 KB dep stays out of the main bundle
- * until the user actually opens a refine session.
+ * Converts the live DOM to an inline-styled SVG foreignObject snapshot. This
+ * stays in the current document and avoids html2canvas' sandbox iframe, which
+ * cannot inspect an opaque-origin widget frame.
  *
  * Returns a PNG data URL (base64) matching the element's on-screen size,
  * scaled by devicePixelRatio for retina fidelity.
@@ -28,11 +29,8 @@ export interface CapturedScreenshot {
 }
 
 /**
- * html2canvas currently cannot parse CSS Color 4's `color()` syntax, even
- * though Chromium can render it. Chromium may expose theme tokens in that
- * form through getComputedStyle(), so normalize numeric color-space channels
- * to the broadly supported rgb()/rgba() syntax before html2canvas reads the
- * clone.
+ * Normalize computed CSS Color 4 channels for SVG foreignObject renderers
+ * that do not understand Chromium's color() syntax.
  *
  * This intentionally leaves unknown color spaces alone. Replacing an unknown
  * color with a guessed value is worse than retaining the browser's original
@@ -76,9 +74,8 @@ function roundOpacity(value: number): number {
 }
 
 /**
- * html2canvas renders a cloned document. Copy only computed declarations that
- * contain `color()` to inline, normalized values in that clone; the live
- * canvas and its theme variables are never mutated.
+ * Legacy compatibility helper retained for existing callers. The screenshot
+ * path below copies all computed properties into an isolated DOM clone.
  */
 export function normalizeHtml2CanvasClone(clonedDocument: Document): void {
   const view = clonedDocument.defaultView;
@@ -103,18 +100,9 @@ export async function captureWidgetEl(
   const rect = el.getBoundingClientRect();
   const pixelRatio = Math.max(1, window.devicePixelRatio || 1);
 
-  const html2canvas = (await import("html2canvas")).default;
-  const canvas = await html2canvas(el, {
-    backgroundColor: null,
-    scale: pixelRatio,
-    useCORS: true,
-    logging: false,
-    width: rect.width,
-    height: rect.height,
-    windowWidth: rect.width,
-    windowHeight: rect.height,
-    onclone: normalizeHtml2CanvasClone,
-  });
+  const canvas = await renderDomSnapshot(el, Math.max(1, rect.width), Math.max(1, rect.height), {
+    x: 0, y: 0, w: Math.max(1, rect.width), h: Math.max(1, rect.height),
+  }, pixelRatio);
 
   const pngBase64 = canvas.toDataURL("image/png").replace(
     /^data:image\/png;base64,/,
@@ -162,7 +150,7 @@ export interface CanvasCaptureResult extends CapturedScreenshot {
   dataUrl: string;
 }
 
-/** A framed, viewport-clipped crop ready to hand to html2canvas. */
+/** A framed, viewport-clipped crop ready to render from the live DOM. */
 interface CropPlan {
   /** Viewport-relative crop rect (already clipped to the viewport). */
   screen: CaptureRect;
@@ -202,8 +190,6 @@ async function captureCanvasViewInner(
   const pixelRatio = Math.max(1, window.devicePixelRatio || 1);
   // Cap scale to keep capture fast and file sizes reasonable for LLM vision.
   const scale = Math.min(pixelRatio, 1.5);
-  const html2canvas = (await import("html2canvas")).default;
-
   const viewportRect = viewportEl.getBoundingClientRect();
   const viewportW = Math.max(0, Math.floor(viewportRect.width));
   const viewportH = Math.max(0, Math.floor(viewportRect.height));
@@ -284,30 +270,13 @@ async function captureCanvasViewInner(
         ? MAX_CAPTURE_WIDTH / plan.screen.w
         : scale;
 
-    const canvas = await html2canvas(viewportEl, {
-      backgroundColor: null,
-      scale: renderScale,
-      useCORS: true,
-      logging: false,
-      width: Math.max(1, Math.floor(plan.screen.w)),
-      height: Math.max(1, Math.floor(plan.screen.h)),
-      // html2canvas crops in ABSOLUTE client coordinates (its renderer
-      // translates by (-x, -y); defaults come from getBoundingClientRect).
-      // Passing viewport-relative offsets here was an offset bug whenever
-      // .canvas-area sat away from the client origin.
-      x: viewportRect.left + plan.screen.x,
-      y: viewportRect.top + plan.screen.y,
-      // Keep the clone's layout identical to the real window; sizing it to
-      // the crop used to reflow percentage-based layouts before painting.
-      windowWidth: window.innerWidth,
-      windowHeight: window.innerHeight,
-      // Ignore UI overlays (zoom pill, style panels, toolbars) that are
-      // rendered inside the viewport but should not appear in agent screenshots.
-      // These elements are marked with `data-capture-ignore` in CanvasArea.
-      ignoreElements: (el: Element) =>
-        el instanceof HTMLElement && el.dataset.captureIgnore === "",
-      onclone: normalizeHtml2CanvasClone,
-    });
+    const canvas = await renderDomSnapshot(
+      viewportEl,
+      Math.max(1, viewportW),
+      Math.max(1, viewportH),
+      plan.screen,
+      renderScale,
+    );
 
     const dataUrl = canvas.toDataURL("image/png");
     const pngBase64 = dataUrl.replace(/^data:image\/png;base64,/, "");
@@ -324,6 +293,263 @@ async function captureCanvasViewInner(
   } finally {
     await plan.restore();
   }
+}
+
+const HTML_NS = "http://www.w3.org/1999/xhtml";
+const SVG_NS = "http://www.w3.org/2000/svg";
+const MAX_INLINE_RESOURCE_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Render a live DOM subtree through SVG foreignObject without creating an
+ * iframe or reading any frame's document. Computed styles and paintable
+ * resources are copied into a detached clone; the live app DOM is untouched.
+ */
+async function renderDomSnapshot(
+  source: HTMLElement,
+  sourceWidth: number,
+  sourceHeight: number,
+  crop: CaptureRect,
+  scale: number,
+): Promise<HTMLCanvasElement> {
+  const sourceNodes: Element[] = [source, ...Array.from(source.querySelectorAll("*"))];
+  const clone = source.cloneNode(true) as HTMLElement;
+  const cloneNodes: Element[] = [clone, ...Array.from(clone.querySelectorAll("*"))];
+  const sourceWindow = source.ownerDocument.defaultView;
+  if (!sourceWindow) throw new Error("Cannot render a detached Canvas document.");
+  const warnings: string[] = [];
+  const pairs = sourceNodes.map((node, index) => [node, cloneNodes[index]] as const);
+
+  for (const [original, copy] of pairs) {
+    if (original instanceof HTMLElement && original.dataset.captureIgnore === "") {
+      copy.remove();
+      continue;
+    }
+    const computed = sourceWindow.getComputedStyle(original);
+    const style = (copy as HTMLElement | SVGElement).style;
+    for (const property of computed) {
+      let value = normalizeHtml2CanvasColors(computed.getPropertyValue(property));
+      if (value.includes("url(")) value = await inlineCssUrls(value, warnings);
+      style.setProperty(property, value, "important");
+    }
+    if (original instanceof HTMLInputElement && copy instanceof HTMLInputElement) {
+      copy.value = original.value;
+      copy.checked = original.checked;
+    } else if (original instanceof HTMLTextAreaElement && copy instanceof HTMLTextAreaElement) {
+      copy.value = original.value;
+      copy.textContent = original.value;
+    } else if (original instanceof HTMLSelectElement && copy instanceof HTMLSelectElement) {
+      copy.value = original.value;
+    }
+    await copyPaintResource(original, copy, warnings);
+    copyPseudoElement(original, copy, "::before", sourceWindow);
+    copyPseudoElement(original, copy, "::after", sourceWindow);
+  }
+
+  clone.style.setProperty("width", `${sourceWidth}px`, "important");
+  clone.style.setProperty("height", `${sourceHeight}px`, "important");
+  clone.style.setProperty("max-width", "none", "important");
+  clone.style.setProperty("max-height", "none", "important");
+  clone.style.setProperty("overflow", "hidden", "important");
+  clone.style.setProperty("box-sizing", "border-box", "important");
+  clone.setAttribute("xmlns", HTML_NS);
+
+  // Sandboxed widgets and PDF previews cannot expose their document to the
+  // parent. Show an explicit marker in the image instead of silently omitting
+  // their pixels or attempting to loosen their sandbox.
+  for (const frame of Array.from(clone.querySelectorAll("iframe, frame"))) {
+    const placeholder = source.ownerDocument.createElement("div");
+    placeholder.textContent = "Embedded sandbox content omitted";
+    placeholder.setAttribute("style", frame.getAttribute("style") || "");
+    placeholder.style.setProperty("display", "flex", "important");
+    placeholder.style.setProperty("align-items", "center", "important");
+    placeholder.style.setProperty("justify-content", "center", "important");
+    placeholder.style.setProperty("box-sizing", "border-box", "important");
+    placeholder.style.setProperty("border", "1px dashed #888", "important");
+    placeholder.style.setProperty("background", "#f2f2f2", "important");
+    placeholder.style.setProperty("color", "#444", "important");
+    placeholder.style.setProperty("font", "12px sans-serif", "important");
+    frame.replaceWith(placeholder);
+    warnings.push("Sandboxed iframe content is marked as omitted in the screenshot.");
+  }
+
+  const foreignObject = `<foreignObject x="0" y="0" width="${sourceWidth}" height="${sourceHeight}"><div xmlns="${HTML_NS}">${new XMLSerializer().serializeToString(clone)}</div></foreignObject>`;
+  const svg = `<svg xmlns="${SVG_NS}" xmlns:xhtml="${HTML_NS}" width="${Math.ceil(sourceWidth * scale)}" height="${Math.ceil(sourceHeight * scale)}" viewBox="0 0 ${sourceWidth} ${sourceHeight}">${foreignObject}</svg>`;
+  const svgDataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  const image = await loadImage(svgDataUrl);
+  const canvas = source.ownerDocument.createElement("canvas");
+  canvas.width = Math.max(1, Math.ceil(crop.w * scale));
+  canvas.height = Math.max(1, Math.ceil(crop.h * scale));
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Canvas 2D context is unavailable for screenshot rendering.");
+  context.drawImage(
+    image,
+    crop.x * scale,
+    crop.y * scale,
+    crop.w * scale,
+    crop.h * scale,
+    0,
+    0,
+    canvas.width,
+    canvas.height,
+  );
+  if (warnings.length) {
+    const note = `Capture note: ${[...new Set(warnings)].slice(0, 3).join(" ")}`;
+    context.save();
+    context.font = `${Math.max(10, Math.round(11 * scale))}px sans-serif`;
+    const barHeight = Math.max(24, Math.ceil(18 * scale));
+    context.fillStyle = "rgba(35, 35, 35, 0.88)";
+    context.fillRect(0, 0, canvas.width, barHeight);
+    context.fillStyle = "#fff";
+    context.fillText(note.slice(0, 260), Math.ceil(8 * scale), Math.ceil(barHeight * 0.68), Math.max(1, canvas.width - 16 * scale));
+    context.restore();
+  }
+  try {
+    canvas.toDataURL("image/png");
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`Canvas screenshot contains a resource that cannot be exported safely: ${reason}`);
+  }
+  // Keep warnings visible in DevTools for local captures; iframe omissions
+  // are also drawn as an in-image label so MCP users see the limitation.
+  if (warnings.length) console.warn("Canvas screenshot notes:", [...new Set(warnings)]);
+  return canvas;
+}
+
+async function copyPaintResource(original: Element, copy: Element, warnings: string[]): Promise<void> {
+  if (original instanceof HTMLImageElement && copy instanceof HTMLImageElement) {
+    if (original.currentSrc || original.src) {
+      try {
+        copy.src = await imageUrlToPng(original.currentSrc || original.src);
+        copy.removeAttribute("srcset");
+        await copy.decode().catch(() => {});
+      } catch {
+        copy.removeAttribute("src");
+        warnings.push(`Image resource could not be embedded: ${safeResourceName(original.currentSrc || original.src)}`);
+      }
+    }
+  } else if (original instanceof SVGImageElement && copy instanceof SVGImageElement) {
+    const source = original.href.baseVal || original.getAttribute("xlink:href") || "";
+    if (source && !source.startsWith("#")) {
+      try {
+        const embedded = await imageUrlToPng(new URL(source, original.ownerDocument.baseURI).href);
+        copy.href.baseVal = embedded;
+        copy.removeAttribute("xlink:href");
+      } catch {
+        copy.removeAttribute("href");
+        copy.removeAttribute("xlink:href");
+        warnings.push(`SVG image resource could not be embedded: ${safeResourceName(source)}`);
+      }
+    }
+  } else if (original instanceof HTMLCanvasElement) {
+    try {
+      const image = original.ownerDocument.createElement("img");
+      image.src = original.toDataURL("image/png");
+      image.width = original.width;
+      image.height = original.height;
+      image.setAttribute("style", (copy as HTMLElement).getAttribute("style") || "");
+      copy.replaceWith(image);
+    } catch {
+      replaceWithResourceNotice(copy, "Canvas image unavailable");
+      warnings.push("A canvas drawing could not be exported safely.");
+    }
+  } else if (original instanceof HTMLVideoElement) {
+    try {
+      const frame = original.ownerDocument.createElement("canvas");
+      frame.width = Math.max(1, original.videoWidth);
+      frame.height = Math.max(1, original.videoHeight);
+      frame.getContext("2d")?.drawImage(original, 0, 0);
+      const image = original.ownerDocument.createElement("img");
+      image.src = frame.toDataURL("image/png");
+      image.setAttribute("style", (copy as HTMLElement).getAttribute("style") || "");
+      copy.replaceWith(image);
+    } catch {
+      replaceWithResourceNotice(copy, "Video frame unavailable");
+      warnings.push("A video frame could not be exported safely.");
+    }
+  }
+}
+
+function replaceWithResourceNotice(element: Element, text: string): void {
+  const notice = element.ownerDocument.createElement("span");
+  notice.textContent = text;
+  notice.setAttribute("style", (element as HTMLElement).getAttribute("style") || "");
+  notice.style.setProperty("display", "inline-flex", "important");
+  notice.style.setProperty("align-items", "center", "important");
+  notice.style.setProperty("justify-content", "center", "important");
+  notice.style.setProperty("background", "#f2f2f2", "important");
+  notice.style.setProperty("color", "#444", "important");
+  element.replaceWith(notice);
+}
+
+function copyPseudoElement(element: Element, clone: Element, pseudo: "::before" | "::after", view: Window): void {
+  const computed = view.getComputedStyle(element, pseudo);
+  const content = computed.content;
+  if (!content || content === "none" || content === "normal" || content === "\"\"" || content === "''") return;
+  const text = content.match(/^(?:"(.*)"|'(.*)')$/)?.slice(1).find((part) => part !== undefined) ?? "";
+  if (!text) return;
+  const span = clone.ownerDocument.createElement("span");
+  span.textContent = text;
+  span.setAttribute("data-screenshot-pseudo", pseudo);
+  for (const property of computed) {
+    span.style.setProperty(property, normalizeHtml2CanvasColors(computed.getPropertyValue(property)), "important");
+  }
+  if (pseudo === "::before") clone.prepend(span); else clone.append(span);
+}
+
+async function inlineCssUrls(value: string, warnings: string[]): Promise<string> {
+  const matches = Array.from(value.matchAll(/url\((?:"([^"]*)"|'([^']*)'|([^)]*))\)/gi));
+  let result = value;
+  for (const match of matches) {
+    const url = (match[1] ?? match[2] ?? match[3] ?? "").trim();
+    if (!url || url.startsWith("#") || url.startsWith("data:")) continue;
+    try {
+      const dataUrl = await resourceToDataUrl(new URL(url, document.baseURI).href);
+      result = result.replace(match[0], `url("${dataUrl}")`);
+    } catch {
+      result = result.replace(match[0], "none");
+      warnings.push(`CSS image resource could not be embedded: ${safeResourceName(url)}`);
+    }
+  }
+  return result;
+}
+
+async function imageUrlToPng(url: string): Promise<string> {
+  const dataUrl = await resourceToDataUrl(url);
+  const image = await loadImage(dataUrl);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, image.naturalWidth || image.width);
+  canvas.height = Math.max(1, image.naturalHeight || image.height);
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("2D context unavailable");
+  context.drawImage(image, 0, 0);
+  return canvas.toDataURL("image/png");
+}
+
+async function resourceToDataUrl(url: string): Promise<string> {
+  const response = await fetch(url, { mode: "cors", credentials: "same-origin" });
+  if (!response.ok) throw new Error(`Resource request failed (${response.status})`);
+  const blob = await response.blob();
+  if (blob.size > MAX_INLINE_RESOURCE_BYTES) throw new Error("Resource exceeds inline size limit");
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error || new Error("Could not read resource"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function loadImage(source: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Image renderer rejected the screenshot source"));
+    image.src = source;
+  });
+}
+
+function safeResourceName(value: string): string {
+  try { return new URL(value, document.baseURI).hostname || "local resource"; }
+  catch { return "local resource"; }
 }
 
 /**
