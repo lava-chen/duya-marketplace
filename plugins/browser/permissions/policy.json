@@ -1,0 +1,14 @@
+{
+  "defaultMode": "read",
+  "writeActionsRequireApproval": true,
+  "destructiveActionsRequireApproval": true,
+  "permissions": [
+    { "name": "browser.read" },
+    { "name": "browser.control" }
+  ],
+  "notes": [
+    "The CUA REPL is one MCP tool call and can contain multiple browser actions.",
+    "DUYA currently applies its plugin MCP approval policy to the whole call;",
+    "these declarations do not provide per-action enforcement."
+  ]
+}

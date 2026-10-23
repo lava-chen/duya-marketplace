@@ -1,0 +1,45 @@
+{
+  "name": "computer-use",
+  "id": "com.duya.computer-use",
+  "version": "0.3.0",
+  "description": "Control the local desktop through the official Cua Driver MCP server.",
+  "author": {
+    "name": "DUYA Team",
+    "url": "https://github.com/lava-chen/duya"
+  },
+  "license": "MIT",
+  "keywords": [
+    "computer-use",
+    "cua",
+    "desktop",
+    "automation"
+  ],
+  "interface": {
+    "displayName": "Computer Use",
+    "shortDescription": "Operate the desktop through the official Cua Driver MCP service.",
+    "category": "automation",
+    "icon": "./assets/icon.svg",
+    "displayName_zh": "\u7535\u8111\u64cd\u4f5c",
+    "shortDescription_zh": "\u901a\u8fc7\u5b98\u65b9 Cua Driver MCP \u670d\u52a1\u64cd\u4f5c\u684c\u9762\u3002"
+  },
+  "setup": [
+    {
+      "id": "driverPath",
+      "label": "Cua Driver executable path",
+      "type": "path",
+      "required": false
+    },
+    {
+      "id": "accessPolicyJson",
+      "label": "App access policy JSON (optional)",
+      "type": "text",
+      "required": false
+    },
+    {
+      "id": "auditPath",
+      "label": "Computer Use audit log path (optional)",
+      "type": "path",
+      "required": false
+    }
+  ]
+}

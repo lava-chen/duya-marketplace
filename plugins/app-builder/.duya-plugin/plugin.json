@@ -1,0 +1,14 @@
+{
+  "name": "app-builder",
+  "id": "com.duya.app-builder",
+  "version": "0.1.0",
+  "description": "Create standalone DUYA desktop Mini App plugins from a working App and MCP scaffold.",
+  "author": { "name": "DUYA Team", "url": "https://github.com/lava-chen/duya" },
+  "license": "MIT",
+  "keywords": ["plugin", "mini-app", "mcp", "scaffold"],
+  "interface": {
+    "displayName": "Mini App Builder",
+    "shortDescription": "Create a desktop App plugin with its own UI and MCP tools.",
+    "category": "development"
+  }
+}
