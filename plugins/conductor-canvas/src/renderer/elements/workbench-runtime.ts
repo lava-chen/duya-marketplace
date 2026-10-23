@@ -148,7 +148,7 @@ const RUNTIME_SCRIPT = /* js */ `(function () {
 /** Sandbox-local renderer: the host receives only a PNG and never reads the
  * opaque-origin frame's document. This script is also added to static widget
  * srcdocs so all plugin-owned widgets can answer the capture handshake. */
-const WIDGET_CAPTURE_SCRIPT = /* js */ `(function () {
+const WIDGET_CAPTURE_SCRIPT = /* js */ String.raw`(function () {
   'use strict';
   window.addEventListener('message', function (event) {
     var request = event.data;
@@ -158,7 +158,7 @@ const WIDGET_CAPTURE_SCRIPT = /* js */ `(function () {
 
   function capture(requestId) {
     try {
-      var sources = [document.documentElement].concat(Array.prototype.slice.call(document.querySelectorAll('*')));
+      var sources = [document.documentElement].concat(Array.prototype.slice.call(document.documentElement.querySelectorAll('*')));
       var clone = document.documentElement.cloneNode(true);
       var copies = [clone].concat(Array.prototype.slice.call(clone.querySelectorAll('*')));
       var warnings = [];
@@ -185,9 +185,16 @@ const WIDGET_CAPTURE_SCRIPT = /* js */ `(function () {
           } catch (error) { warnings.push('A widget drawing could not be exported.'); }
         } else if (source instanceof HTMLImageElement && (source.currentSrc || source.src)) {
           (function (originalImage, clonedImage) {
-            jobs.push(fetch(originalImage.currentSrc || originalImage.src, { mode: 'cors', credentials: 'same-origin' })
+            var imageUrl = originalImage.currentSrc || originalImage.src;
+            if (imageUrl.toLowerCase().startsWith('data:image/')) {
+              if (imageUrl.length > 8 * 1024 * 1024) { clonedImage.removeAttribute('src'); warnings.push('A widget image exceeds the capture size limit.'); }
+              else { clonedImage.src = imageUrl; clonedImage.removeAttribute('srcset'); }
+              return;
+            }
+            jobs.push(fetch(imageUrl, { mode: 'cors', credentials: 'same-origin' })
               .then(function (response) { if (!response.ok) throw new Error('image request failed'); return response.blob(); })
               .then(function (blob) { return new Promise(function (resolve, reject) {
+                if (!blob.type.startsWith('image/') || blob.size > 6 * 1024 * 1024) { reject(new Error('Image type or size is unsupported.')); return; }
                 var reader = new FileReader(); reader.onload = function () { resolve(String(reader.result)); };
                 reader.onerror = reject; reader.readAsDataURL(blob);
               }); })
@@ -207,6 +214,7 @@ const WIDGET_CAPTURE_SCRIPT = /* js */ `(function () {
         var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '"><foreignObject x="0" y="0" width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml">' + html + '</div></foreignObject></svg>';
         var rendered = new Image();
         rendered.onload = function () {
+          try {
           var canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
           var context = canvas.getContext('2d'); if (!context) throw new Error('Canvas context unavailable');
           context.drawImage(rendered, 0, 0, width, height);
@@ -218,6 +226,7 @@ const WIDGET_CAPTURE_SCRIPT = /* js */ `(function () {
           var dataUrl = canvas.toDataURL('image/png');
           if (dataUrl.length > 8 * 1024 * 1024) throw new Error('Widget screenshot exceeds the 6 MiB limit.');
           window.parent.postMessage({ type: 'duya:canvas-capture-response', requestId: requestId, dataUrl: dataUrl }, '*');
+          } catch (error) { replyError(requestId, String(error && error.message || error)); }
         };
         rendered.onerror = function () { replyError(requestId, 'Widget DOM could not be rendered.'); };
         rendered.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
