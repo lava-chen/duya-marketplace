@@ -57,12 +57,25 @@ export function ConductorView() {
       disconnectBridge();
       setActiveCanvas(canvasId);
       const snap = await getSnapshot(canvasId);
-      if (snap) setSnapshot(snap);
+      if (!snap) {
+        setUiError("The linked canvas could not be loaded.");
+        return;
+      }
+      setSnapshot(snap);
       connectBridge(canvasId);
       setLibraryOpen(false);
     },
-    [disconnectBridge, setActiveCanvas, setSnapshot, connectBridge]
+    [disconnectBridge, setActiveCanvas, setSnapshot, connectBridge, setUiError]
   );
+
+  useEffect(() => {
+    const handleLinkedCanvas = (event: Event) => {
+      const canvasId = (event as CustomEvent<unknown>).detail;
+      if (typeof canvasId === "string" && canvasId) void openCanvas(canvasId);
+    };
+    window.addEventListener("plugin-canvas:open-canvas", handleLinkedCanvas);
+    return () => window.removeEventListener("plugin-canvas:open-canvas", handleLinkedCanvas);
+  }, [openCanvas]);
 
   useEffect(() => {
     registerAllElements();

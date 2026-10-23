@@ -6,7 +6,6 @@ import type { CanvasElement } from "../../types/conductor";
 import type { LinkSnapshotMode } from "../../types/canvas-node";
 import { useConductorStore } from "../../stores/conductor-store";
 import { executeAction, captureLinkSnapshot } from "../../ipc/conductor-ipc";
-import { useConversationStore } from "@/stores/conversation-store";
 
 type LinkType = "url" | "session" | "canvas";
 
@@ -206,21 +205,32 @@ function SnapshotModeMenu({
 export const LinkElement: React.FC<{ element: CanvasElement }> = ({ element }) => {
   const config = useMemo(() => parseLinkConfig(element.config), [element.config]);
   const activeCanvasId = useConductorStore((state) => state.activeCanvasId);
-  const setActiveCanvas = useConductorStore((state) => state.setActiveCanvas);
-  const setActiveThread = useConversationStore((state) => state.setActiveThread);
   const title = titleFor(config);
   const meta = metaFor(config);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
+  const [linkMessage, setLinkMessage] = useState<string | null>(null);
   const faviconButtonRef = useRef<HTMLButtonElement>(null);
 
   const open = useCallback(() => {
-    if (config.linkType === "url" && config.url) window.open(config.url, "_blank", "noopener,noreferrer");
-    if (config.linkType === "canvas" && config.targetId) setActiveCanvas(config.targetId);
-    if (config.linkType === "session" && config.targetId) setActiveThread(config.targetId);
-  }, [config, setActiveCanvas, setActiveThread]);
+    setLinkMessage(null);
+    if (config.linkType === "url" && config.url) {
+      void navigator.clipboard.writeText(config.url)
+        .then(() => setLinkMessage("External sites cannot open from this Canvas sandbox. Link copied to clipboard."))
+        .catch(() => setLinkMessage(`This Canvas sandbox cannot open external sites. Copy this URL: ${config.url}`));
+    }
+    if (config.linkType === "canvas" && config.targetId) {
+      window.dispatchEvent(new CustomEvent("plugin-canvas:open-canvas", { detail: config.targetId }));
+    }
+    if (config.linkType === "session" && config.targetId) {
+      const sessionLink = `duya://session/${config.targetId}`;
+      void navigator.clipboard.writeText(sessionLink)
+        .then(() => setLinkMessage("Session links cannot open in standalone Canvas. Link copied to clipboard."))
+        .catch(() => setLinkMessage(`Session links cannot open in standalone Canvas. Copy this link: ${sessionLink}`));
+    }
+  }, [config]);
 
   const applyMode = useCallback(async (mode: LinkSnapshotMode) => {
     setMenuOpen(false);
@@ -277,7 +287,10 @@ export const LinkElement: React.FC<{ element: CanvasElement }> = ({ element }) =
 
   const copy = useCallback((event: React.MouseEvent) => {
     event.stopPropagation();
-    void navigator.clipboard.writeText(config.linkType === "url" ? config.url || "" : `duya://${config.linkType}/${config.targetId || ""}`);
+    const value = config.linkType === "url" ? config.url || "" : `duya://${config.linkType}/${config.targetId || ""}`;
+    void navigator.clipboard.writeText(value)
+      .then(() => setLinkMessage("Link copied to clipboard."))
+      .catch(() => setLinkMessage(`Copy this link: ${value}`));
   }, [config]);
 
   if (config.linkType === "url" && config.snapshotMode !== "none") {
@@ -313,6 +326,7 @@ export const LinkElement: React.FC<{ element: CanvasElement }> = ({ element }) =
           <button type="button" className="canvas-link__snapshot-copy" onClick={copy}>Copy</button>
         </footer>
         {captureError && <div className="canvas-link__snapshot-error">{captureError}</div>}
+        {linkMessage && <div className="canvas-link__snapshot-error" role="status">{linkMessage}</div>}
         {menuOpen && (
           <SnapshotModeMenu
             currentMode={config.snapshotMode}
@@ -339,6 +353,7 @@ export const LinkElement: React.FC<{ element: CanvasElement }> = ({ element }) =
         </button>
         <button type="button" className="canvas-link__title" onClick={open}>{title}</button>
         {captureError && <div className="canvas-link__snapshot-error" role="alert">{captureError}</div>}
+        {linkMessage && <div className="canvas-link__snapshot-error" role="status">{linkMessage}</div>}
         {menuOpen && (
           <SnapshotModeMenu
             currentMode={config.snapshotMode}
@@ -357,7 +372,8 @@ export const LinkElement: React.FC<{ element: CanvasElement }> = ({ element }) =
       {config.linkType === "session" && <div className="canvas-link__preview canvas-link__preview--session" aria-hidden="true"><span className="canvas-link__preview-empty">Conversation</span></div>}
       <header><LinkMark type={config.linkType} faviconUrl={config.faviconUrl} /><div><span className="canvas-link__eyebrow">{LINK_LABEL[config.linkType]}</span><h3>{title}</h3><p>{meta}</p></div></header>
       {config.description && <p className="canvas-link__description">{config.description}</p>}
-      <footer><button type="button" onClick={copy}>Copy link</button><span>↗ Open</span></footer>
+      <footer><button type="button" onClick={copy}>Copy link</button><span>{config.linkType === "session" ? "Copy to open in chat" : config.linkType === "canvas" ? "Open canvas" : "Copy external link"}</span></footer>
+      {linkMessage && <div className="canvas-link__snapshot-error" role="status">{linkMessage}</div>}
     </article>
   );
 };
