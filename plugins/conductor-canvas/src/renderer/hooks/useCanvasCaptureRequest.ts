@@ -25,20 +25,16 @@ export function useCanvasCaptureRequest(activeCanvasId?: string | null): void {
       busy = true;
       try {
         const response = await pluginBridge.call<{ requests?: CaptureRequest[] }>("canvas_capture_poll", {});
+        if (stopped) return;
         for (const request of response?.requests || []) {
+          if (stopped) return;
           if (seen.has(request.requestId)) continue;
+          // Other app windows may be showing different canvases; leave their
+          // requests pending so the matching window can fulfill them.
+          if (!activeCanvasId || request.canvasId !== activeCanvasId) continue;
           seen.add(request.requestId);
           // Keep this set bounded in case the app stays open for a long time.
           if (seen.size > 500) seen.clear();
-          if (!activeCanvasId || request.canvasId !== activeCanvasId) {
-            await pluginBridge.call("canvas_capture_complete", {
-              requestId: request.requestId,
-              error: !activeCanvasId
-                ? "No Canvas is open. Open the requested canvas in the Canvas app and retry."
-                : `Requested canvas ${request.canvasId} is not the active canvas (${activeCanvasId}). Open it and retry.`,
-            });
-            continue;
-          }
           try {
             const viewport = document.querySelector<HTMLElement>(".canvas-area");
             const inner = viewport?.querySelector<HTMLElement>(".canvas-inner") || null;
@@ -73,6 +69,7 @@ export function useCanvasCaptureRequest(activeCanvasId?: string | null): void {
               ...(request.elementId ? { elementId: request.elementId } : {}),
               ...(region ? { region } : {}),
             });
+            if (stopped) return;
             await pluginBridge.call("canvas_capture_complete", {
               requestId: request.requestId,
               image: {
@@ -83,6 +80,7 @@ export function useCanvasCaptureRequest(activeCanvasId?: string | null): void {
               },
             });
           } catch (error) {
+            if (stopped) return;
             await pluginBridge.call("canvas_capture_complete", {
               requestId: request.requestId,
               error: error instanceof Error ? error.message : "Canvas capture failed.",

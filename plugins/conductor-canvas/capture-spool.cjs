@@ -40,14 +40,19 @@ function validateCapture(input) {
   };
 }
 
-async function atomicJson(file, value) {
+async function atomicJson(file, value, exclusive = false) {
   const temp = `${file}.${process.pid}.${crypto.randomBytes(6).toString("hex")}.tmp`;
   const handle = await fs.open(temp, "wx", 0o600);
   try {
     await handle.writeFile(JSON.stringify(value), "utf8");
     await handle.sync();
   } finally { await handle.close(); }
-  await fs.rename(temp, file);
+  if (exclusive) {
+    try { await fs.link(temp, file); }
+    finally { await fs.unlink(temp).catch(() => {}); }
+  } else {
+    await fs.rename(temp, file);
+  }
 }
 
 function createCaptureSpool(directory) {
@@ -99,8 +104,11 @@ function createCaptureSpool(directory) {
     }
   }
 
-  async function poll() {
+  async function poll(input = {}) {
     await init();
+    if (input.canvasId !== undefined && (typeof input.canvasId !== "string" || input.canvasId.length > 256)) {
+      throw new Error("canvasId must be a string of at most 256 characters.");
+    }
     const files = await fs.readdir(dir).catch(() => []);
     const requests = [];
     for (const name of files) {
@@ -108,7 +116,7 @@ function createCaptureSpool(directory) {
       if (!match) continue;
       try {
         const request = JSON.parse(await fs.readFile(path.join(dir, name), "utf8"));
-        if (validId(request.requestId) && request.requestId === match[1] && Date.now() - request.createdAt <= REQUEST_TTL_MS) requests.push(request);
+        if (validId(request.requestId) && request.requestId === match[1] && Date.now() - request.createdAt <= REQUEST_TTL_MS && (!input.canvasId || request.canvasId === input.canvasId)) requests.push(request);
       } catch { /* ignore partial/corrupt requests */ }
     }
     return { requests };
@@ -130,8 +138,13 @@ function createCaptureSpool(directory) {
       result.image = { base64: data.toString("base64"), mimeType: "image/png", width: Number(image.width), height: Number(image.height) };
       if (![result.image.width, result.image.height].every((n) => Number.isFinite(n) && n > 0 && n <= 20_000)) throw new Error("Screenshot dimensions are invalid.");
     }
-    await atomicJson(files.result, result);
-    return { accepted: true };
+    try {
+      await atomicJson(files.result, result, true);
+      return { accepted: true };
+    } catch (error) {
+      if (error && error.code === "EEXIST") return { accepted: false, reason: "already_completed" };
+      throw error;
+    }
   }
 
   return { createRequest, poll, complete, cleanup };
