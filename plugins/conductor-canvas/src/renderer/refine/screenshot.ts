@@ -261,9 +261,9 @@ async function captureCanvasViewInner(
   }
 
   try {
-    // Downsample very large captures so html2canvas stays fast and the
+    // Downsample very large captures so DOM rasterization stays fast and the
     // resulting PNG stays small enough to save and send to vision models.
-    // html2canvas output size is (width * scale), so cap that product.
+    // The output size is (width * scale), so cap that product.
     const MAX_CAPTURE_WIDTH = 1920;
     const renderScale =
       plan.screen.w * scale > MAX_CAPTURE_WIDTH
@@ -695,7 +695,7 @@ function readTransform(): CanvasTransform {
 
 /**
  * Yield to the browser for `frames` animation frames so React commit and
- * paint actually finish before html2canvas walks the transformed DOM.
+ * paint actually finish before the snapshot copies the transformed DOM.
  * Falls back to timeouts in environments without rAF (jsdom tests).
  */
 async function waitForPaint(frames: number): Promise<void> {

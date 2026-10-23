@@ -3,7 +3,7 @@
  *
  * The agent reasons in canvas GRID units — the exact same coordinates
  * `canvas_create_element` accepts for element positions. These helpers
- * convert between that space and what html2canvas needs (absolute client
+ * convert between that space and what the screenshot renderer needs (absolute client
  * pixels), and compute the temporary pan/zoom required to bring an
  * arbitrary on-canvas rectangle into the visible viewport.
  *
