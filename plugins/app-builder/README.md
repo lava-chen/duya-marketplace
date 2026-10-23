@@ -8,8 +8,8 @@ declaration, and a permissions policy. Copy and customize it in a separate
 project, then install it with `duya plugin install --from-path <project-dir>
 --yes`.
 
-After installation, the App launcher appears on the plugin's row in Settings
-→ Capabilities → Plugins. DUYA discovers the MCP server from
+After installation, open the desktop **Apps** view and launch the App. The
+plugin's row in Settings → Capabilities → Plugins also exposes its launcher. DUYA discovers the MCP server from
 `mcp/servers.json`; an agent can use its tools after the normal tool approval.
 From the copied project directory, run `node --test test/template.test.cjs` to
 check that its manifest, App tool scope, and persistent MCP server agree.
