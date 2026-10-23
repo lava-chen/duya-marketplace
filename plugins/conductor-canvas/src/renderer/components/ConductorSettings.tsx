@@ -77,6 +77,7 @@ export function ConductorSettings() {
       setProviderApiKey("");
       setProviderStatus(await host.providers.status());
       await fetchConductorModels();
+      window.dispatchEvent(new Event("plugin-canvas:provider-updated"));
     } catch (error) {
       setProviderError(error instanceof Error ? error.message : String(error));
     } finally {

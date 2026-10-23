@@ -16,11 +16,21 @@ export function ConductorComposer() {
   const { activeCanvasId, conductorModels, conductorModel, conductorModelsLoading, fetchConductorModels, setConductorModel, setUiError } = useConductorStore();
 
   useEffect(() => {
-    void fetchConductorModels();
-    const refresh = () => void fetchConductorModels();
+    let active = true;
+    const refresh = () => {
+      void fetchConductorModels();
+      void host.providers.status()
+        .then((status) => { if (active) setProviderReady(status.configured && status.hasApiKey); })
+        .catch(() => { if (active) setProviderReady(false); });
+    };
+    refresh();
     window.addEventListener("focus", refresh);
-    void host.providers.status().then((status) => setProviderReady(status.configured && status.hasApiKey)).catch(() => setProviderReady(false));
-    return () => window.removeEventListener("focus", refresh);
+    window.addEventListener("plugin-canvas:provider-updated", refresh);
+    return () => {
+      active = false;
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("plugin-canvas:provider-updated", refresh);
+    };
   }, [fetchConductorModels, host]);
 
   const handleSend = useCallback(async () => {
