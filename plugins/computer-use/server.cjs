@@ -249,16 +249,23 @@ let shuttingDown = false;
 function stopDriver() {
   if (shuttingDown) return;
   shuttingDown = true;
-  if (driver.exitCode === null && !driver.killed) driver.kill();
+  if (!driver.pid || driver.exitCode !== null || driver.signalCode !== null) {
+    process.exit(0);
+    return;
+  }
+  // Wait for close so the child is reaped before the adapter exits.
+  const killTimeout = setTimeout(() => driver.kill('SIGKILL'), 750);
+  const exitTimeout = setTimeout(() => process.exit(1), 1_750);
+  driver.once('close', () => {
+    clearTimeout(killTimeout);
+    clearTimeout(exitTimeout);
+    process.exit(0);
+  });
+  driver.kill('SIGTERM');
 }
 process.stdin.on('end', stopDriver);
-function stopOnSignal() {
-  stopDriver();
-  if (driver.exitCode !== null) { process.exit(0); return; }
-  const timeout = setTimeout(() => process.exit(1), 2_000);
-  timeout.unref();
-  driver.once('exit', () => { clearTimeout(timeout); process.exit(0); });
-}
-process.once('SIGINT', stopOnSignal);
-process.once('SIGTERM', stopOnSignal);
-process.on('exit', stopDriver);
+process.once('SIGINT', stopDriver);
+process.once('SIGTERM', stopDriver);
+process.on('exit', () => {
+  if (driver.pid && driver.exitCode === null && driver.signalCode === null) driver.kill('SIGKILL');
+});
