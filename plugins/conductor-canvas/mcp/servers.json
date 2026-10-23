@@ -6,9 +6,9 @@
       "args": ["${DUYA_PLUGIN_ROOT}/server.cjs"],
       "env": {
         "DUYA_CANVAS_STORE": "${DUYA_PLUGIN_DATA}/canvases.json",
-        "CANVAS_OPENAI_BASE_URL": "${CANVAS_OPENAI_BASE_URL}",
-        "CANVAS_OPENAI_MODEL": "${CANVAS_OPENAI_MODEL}",
-        "CANVAS_OPENAI_API_KEY": "${CANVAS_OPENAI_API_KEY}"
+        "CANVAS_OPENAI_BASE_URL": "${CANVAS_OPENAI_BASE_URL:-}",
+        "CANVAS_OPENAI_MODEL": "${CANVAS_OPENAI_MODEL:-}",
+        "CANVAS_OPENAI_API_KEY": "${CANVAS_OPENAI_API_KEY:-}"
       },
       "envPassthrough": "allowlist",
       "startupTimeoutSec": 15,
