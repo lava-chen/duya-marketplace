@@ -24,6 +24,12 @@ interface ParsedLinkConfig {
 
 const LINK_LABEL: Record<LinkType, string> = { url: "External link", session: "Conversation", canvas: "Canvas" };
 
+async function copyText(value: string): Promise<boolean> {
+  if (!navigator.clipboard?.writeText) return false;
+  try { await navigator.clipboard.writeText(value); return true; }
+  catch { return false; }
+}
+
 const SNAPSHOT_MODES: { mode: LinkSnapshotMode; label: string; icon: string }[] = [
   { mode: "none", label: "Text link", icon: "↗" },
   { mode: "desktop-head", label: "Desktop · head", icon: "🖥" },
@@ -217,18 +223,18 @@ export const LinkElement: React.FC<{ element: CanvasElement }> = ({ element }) =
   const open = useCallback(() => {
     setLinkMessage(null);
     if (config.linkType === "url" && config.url) {
-      void navigator.clipboard.writeText(config.url)
-        .then(() => setLinkMessage("External sites cannot open from this Canvas sandbox. Link copied to clipboard."))
-        .catch(() => setLinkMessage(`This Canvas sandbox cannot open external sites. Copy this URL: ${config.url}`));
+      void copyText(config.url).then((copied) => setLinkMessage(copied
+        ? "External sites cannot open from this Canvas sandbox. Link copied to clipboard."
+        : `This Canvas sandbox cannot open external sites. Copy this URL: ${config.url}`));
     }
     if (config.linkType === "canvas" && config.targetId) {
       window.dispatchEvent(new CustomEvent("plugin-canvas:open-canvas", { detail: config.targetId }));
     }
     if (config.linkType === "session" && config.targetId) {
       const sessionLink = `duya://session/${config.targetId}`;
-      void navigator.clipboard.writeText(sessionLink)
-        .then(() => setLinkMessage("Session links cannot open in standalone Canvas. Link copied to clipboard."))
-        .catch(() => setLinkMessage(`Session links cannot open in standalone Canvas. Copy this link: ${sessionLink}`));
+      void copyText(sessionLink).then((copied) => setLinkMessage(copied
+        ? "Session links cannot open in standalone Canvas. Link copied to clipboard."
+        : `Session links cannot open in standalone Canvas. Copy this link: ${sessionLink}`));
     }
   }, [config]);
 
@@ -288,9 +294,7 @@ export const LinkElement: React.FC<{ element: CanvasElement }> = ({ element }) =
   const copy = useCallback((event: React.MouseEvent) => {
     event.stopPropagation();
     const value = config.linkType === "url" ? config.url || "" : `duya://${config.linkType}/${config.targetId || ""}`;
-    void navigator.clipboard.writeText(value)
-      .then(() => setLinkMessage("Link copied to clipboard."))
-      .catch(() => setLinkMessage(`Copy this link: ${value}`));
+    void copyText(value).then((copied) => setLinkMessage(copied ? "Link copied to clipboard." : `Copy this link: ${value}`));
   }, [config]);
 
   if (config.linkType === "url" && config.snapshotMode !== "none") {
