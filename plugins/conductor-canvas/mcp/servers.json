@@ -3,7 +3,9 @@
     {
       "name": "conductor_canvas",
       "command": "node",
-      "args": ["${DUYA_PLUGIN_ROOT}/server.cjs"],
+      "args": [
+        "${DUYA_PLUGIN_ROOT}/server.cjs"
+      ],
       "env": {
         "DUYA_CANVAS_STORE": "${DUYA_PLUGIN_DATA}/canvases.json",
         "CANVAS_OPENAI_BASE_URL": "${CANVAS_OPENAI_BASE_URL:-}",
@@ -12,16 +14,25 @@
       },
       "envPassthrough": "allowlist",
       "startupTimeoutSec": 15,
-      "toolTimeoutSec": 30
+      "toolTimeoutSec": 90
     },
     {
       "name": "conductor_canvas_snapshot",
       "command": "node",
-      "args": ["${DUYA_PLUGIN_ROOT}/link-snapshot-server.cjs"],
-      "env": { "DUYA_CANVAS_STORE": "${DUYA_PLUGIN_DATA}/canvases.json" },
+      "args": [
+        "${DUYA_PLUGIN_ROOT}/link-snapshot-server.cjs"
+      ],
+      "env": {
+        "DUYA_CANVAS_STORE": "${DUYA_PLUGIN_DATA}/canvases.json",
+        "CHROME_BIN": "${CHROME_BIN:-}",
+        "DUYA_BROWSER_EXECUTABLE": "${DUYA_BROWSER_EXECUTABLE:-}",
+        "DISPLAY": "${DISPLAY:-}",
+        "WAYLAND_DISPLAY": "${WAYLAND_DISPLAY:-}",
+        "XDG_RUNTIME_DIR": "${XDG_RUNTIME_DIR:-}"
+      },
       "envPassthrough": "allowlist",
       "startupTimeoutSec": 15,
-      "toolTimeoutSec": 60
+      "toolTimeoutSec": 90
     }
   ]
 }

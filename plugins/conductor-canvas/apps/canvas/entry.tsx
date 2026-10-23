@@ -10,7 +10,10 @@ const host: ConductorHost = {
     const result = await pluginBridge.call<{ providers?: ConductorProvider[] }>("canvas_provider_list");
     return result.providers ?? [];
   },
-  agent: { callRefine: async (args) => pluginBridge.call("canvas_refine_call", args) },
+  agent: {
+    callRefine: async (args) => pluginBridge.call("canvas_refine_call", args),
+    callCanvasRequest: async (args) => pluginBridge.call("canvas_agent_request", args),
+  },
   providers: {
     status: async () => pluginBridge.call<ConductorProviderStatus>("canvas_provider_status"),
     configure: async (args) => { await pluginBridge.call("canvas_provider_configure", args); },

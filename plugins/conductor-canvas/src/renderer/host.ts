@@ -103,6 +103,8 @@ export interface ConductorAgent {
     maxIterations: number;
     screenshotBase64: string;
   }): Promise<RefineLlmResponse>;
+  /** Ask the Canvas-owned provider to propose and apply safe native actions. */
+  callCanvasRequest(args: { canvasId: string; prompt: string; model?: string }): Promise<{ message: string; applied: Array<{ action: string; elementId?: string }>; snapshot: unknown }>;
 }
 
 export interface ConductorProviderStatus {

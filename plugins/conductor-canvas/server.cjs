@@ -8,9 +8,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { randomUUID, createHash } = require('node:crypto');
-const { createProjectDatabase } = require('./project-database.cjs');
 const { createSettingsStore } = require('./settings-store.cjs');
+const { createProjectDatabase } = require('./project-database.cjs');
 const { createRefineProvider } = require('./refine-provider.cjs');
+const { createCanvasAgentProvider } = require('./canvas-agent-provider.cjs');
+const { createCaptureSpool } = require('./capture-spool.cjs');
 
 const storePath = path.resolve(process.env.DUYA_CANVAS_STORE || path.join(os.homedir(), '.duya', 'plugins', 'conductor-canvas', 'canvases.json'));
 const WIDTH = 40;
@@ -20,9 +22,11 @@ const MAX_ELEMENTS = 5000;
 const MAX_ASSET_BYTES = 5 * 1024 * 1024;
 const lockPath = `${storePath}.lock`;
 const assetDir = path.join(path.dirname(storePath), 'assets');
-const projectDatabase = createProjectDatabase({ dataRoot: process.env.DUYA_PLUGIN_DATA || path.dirname(storePath) });
 const settingsStore = createSettingsStore(process.env.DUYA_PLUGIN_DATA || path.dirname(storePath));
+const projectDatabase = createProjectDatabase({ dataRoot: process.env.DUYA_PLUGIN_DATA || path.dirname(storePath) });
 const callRefine = createRefineProvider({ settings: settingsStore });
+const requestCanvasAgent = createCanvasAgentProvider({ settings: settingsStore });
+const captureSpool = createCaptureSpool(path.join(path.dirname(storePath), 'capture-requests'));
 
 // The agent and a Mini App may each run their own MCP process. Keep the
 // read/modify/write transaction under one cross-process lock so an edit from
@@ -140,23 +144,27 @@ const number = { type: 'number' };
 const object = (properties, required = []) => ({ type: 'object', properties, required, additionalProperties: false });
 const tools = [
   { name: 'canvas_manage', description: 'List canvases, read the selected canvas, or select a canvas.', inputSchema: object({ action: { type: 'string', enum: ['list', 'get_current', 'switch'] }, canvasId: string }, ['action']) },
-  { name: 'canvas_create', description: 'Create a canvas and select it.', inputSchema: object({ name: string, description: string }) },
+  { name: 'canvas_create', description: 'Create a canvas and select it.', inputSchema: object({ name: string, description: string, projectPath: { type: ['string', 'null'] } }) },
   { name: 'canvas_update_metadata', description: 'Update canvas favorite state, tags, and group assignment.', inputSchema: object({ canvasId: string, isFavorite: { type: 'boolean' }, tags: { type: 'array', items: string }, groupId: string }) },
-  { name: 'canvas_group_list', description: 'List canvas groups.', inputSchema: object({}) },
-  { name: 'canvas_group_create', description: 'Create a canvas group.', inputSchema: object({ name: string }, ['name']) },
+  { name: 'canvas_group_list', description: 'List canvas groups.', inputSchema: object({ projectPath: { type: ['string', 'null'] } }) },
+  { name: 'canvas_group_create', description: 'Create a canvas group.', inputSchema: object({ name: string, projectPath: { type: ['string', 'null'] } }, ['name']) },
   { name: 'canvas_group_rename', description: 'Rename a canvas group.', inputSchema: object({ groupId: string, name: string }, ['groupId', 'name']) },
   { name: 'canvas_group_delete', description: 'Delete a canvas group and unassign its canvases.', inputSchema: object({ groupId: string }, ['groupId']) },
   { name: 'canvas_rename', description: 'Rename a canvas.', inputSchema: object({ canvasId: string, name: string }, ['name']) },
-  { name: 'canvas_update', description: 'Update canvas metadata and saved layout settings.', inputSchema: object({ canvasId: string, name: string, description: string, layoutConfig: { type: 'object' }, sortOrder: number, isFavorite: { type: 'boolean' }, groupId: string, tags: { type: 'array', items: string } }, ['canvasId']) },
+  { name: 'canvas_update', description: 'Update canvas metadata and saved layout settings.', inputSchema: object({ canvasId: string, name: string, description: string, layoutConfig: { type: 'object' }, sortOrder: number, isFavorite: { type: 'boolean' }, groupId: { type: ['string', 'null'] }, projectPath: { type: ['string', 'null'] }, tags: { type: 'array', items: string } }, ['canvasId']) },
   { name: 'canvas_delete', description: 'Delete a canvas and all of its elements.', inputSchema: object({ canvasId: string }, ['canvasId']) },
   { name: 'canvas_get_snapshot', description: 'Read one canvas with all positions and element content.', inputSchema: object({ canvasId: string }) },
   { name: 'canvas_execute_action', description: 'Apply a Conductor domain action to a canvas, preserving native element fields and freeform positions.', inputSchema: { type: 'object', properties: { action: { type: 'object', properties: {}, additionalProperties: true } }, required: ['action'], additionalProperties: false } },
-  { name: 'canvas_project_database', description: 'Read or update the plugin-owned project database using its typed source, property, record, view, and query commands.', inputSchema: { type: 'object', properties: { request: { type: 'object', properties: { projectPath: string, command: { type: 'object', properties: {}, additionalProperties: true } }, required: ['projectPath', 'command'], additionalProperties: false } }, required: ['request'], additionalProperties: false } },
-  { name: 'canvas_settings_get', description: 'Read a persisted non-secret Canvas plugin setting.', inputSchema: object({ key: string }, ['key']) },
-  { name: 'canvas_settings_set', description: 'Persist a JSON Canvas plugin setting. Provider secrets must use canvas_provider_configure.', inputSchema: object({ key: string, value: {} }, ['key', 'value']) },
-  { name: 'canvas_provider_status', description: 'Read OpenAI-compatible Canvas provider setup status without revealing the API key.', inputSchema: object({}) },
-  { name: 'canvas_provider_list', description: 'List the configured OpenAI-compatible provider for the Canvas model selector.', inputSchema: object({}) },
-  { name: 'canvas_provider_configure', description: 'Configure the optional OpenAI-compatible refine provider.', inputSchema: object({ baseURL: string, model: string, secretAPIkey: { type: ['string', 'null'] } }) },
+  { name: 'canvas_agent_request', description: 'Ask the configured Canvas agent to propose and safely apply native canvas actions.', inputSchema: object({ canvasId: string, prompt: string, model: string }, ['canvasId', 'prompt']) },
+  { name: 'canvas_capture_request', description: 'Capture the canvas or one element in the plugin UI and return a PNG image.', inputSchema: object({ canvasId: string, scope: { type: 'string', enum: ['viewport', 'full', 'element', 'region'] }, elementId: string, region: object({ x: number, y: number, w: number, h: number }, ['x', 'y', 'w', 'h']) }, ['canvasId', 'scope']) },
+  { name: 'canvas_capture_poll', description: 'Poll for pending canvas image capture requests.', inputSchema: object({}) },
+  { name: 'canvas_capture_complete', description: 'Complete or fail a pending canvas image capture request.', inputSchema: object({ requestId: string, image: object({ base64: string, mimeType: string, width: number, height: number }, ['base64', 'mimeType', 'width', 'height']), error: string }, ['requestId']) },
+  { name: 'canvas_project_database', description: 'Read or update the plugin-owned project database using typed commands.', inputSchema: { type: 'object', properties: { request: { type: 'object', properties: { projectPath: string, command: { type: 'object', properties: {}, additionalProperties: true } }, required: ['projectPath', 'command'], additionalProperties: false } }, required: ['request'], additionalProperties: false } },
+  { name: 'canvas_settings_get', description: 'Read a persisted non-secret Canvas setting.', inputSchema: object({ key: string }, ['key']) },
+  { name: 'canvas_settings_set', description: 'Persist a non-secret Canvas setting.', inputSchema: object({ key: string, value: {} }, ['key', 'value']) },
+  { name: 'canvas_provider_status', description: 'Read OpenAI-compatible Canvas provider setup status without revealing its secret.', inputSchema: object({}) },
+  { name: 'canvas_provider_list', description: 'List the configured provider for the Canvas model selector.', inputSchema: object({}) },
+  { name: 'canvas_provider_configure', description: 'Configure the optional OpenAI-compatible Canvas agent and refine provider.', inputSchema: object({ baseURL: string, model: string, secretAPIkey: { type: ['string', 'null'] } }) },
   { name: 'canvas_refine_call', description: 'Refine one widget data object using the configured OpenAI-compatible provider.', inputSchema: object({ sessionId: string, userRequest: string, widgetType: string, currentData: { type: 'object' }, iteration: number, maxIterations: number, screenshotBase64: string }, ['sessionId', 'userRequest', 'widgetType', 'currentData', 'iteration', 'maxIterations', 'screenshotBase64']) },
   { name: 'canvas_export', description: 'Export a canvas snapshot as portable JSON.', inputSchema: object({ canvasId: string }) },
   { name: 'canvas_import', description: 'Import a Conductor Canvas snapshot JSON object as a new canvas.', inputSchema: object({ snapshot: { type: 'object' }, name: string }, ['snapshot']) },
@@ -164,7 +172,7 @@ const tools = [
   { name: 'canvas_asset_put', description: 'Store a local image or file in the Canvas plugin data directory.', inputSchema: object({ name: string, mimeType: string, base64: string }, ['name', 'mimeType', 'base64']) },
   { name: 'canvas_asset_get', description: 'Read a Canvas plugin asset by its content hash.', inputSchema: object({ assetId: string }, ['assetId']) },
   { name: 'canvas_list_elements', description: 'List elements with compact identifiers, content summaries, and positions.', inputSchema: object({ canvasId: string }) },
-  { name: 'canvas_create_element', description: 'Add a native canvas element, file, link, table, database view, or widget.', inputSchema: object({ canvasId: string, type: { type: 'string', enum: ['shape', 'sticky', 'text', 'document', 'table', 'link', 'image', 'file', 'pdf', 'database', 'section', 'frame', 'widget'] }, position: object({ x: number, y: number, w: number, h: number }), config: { type: 'object' } }, ['type', 'position']) },
+  { name: 'canvas_create_element', description: 'Add a native canvas element, file, link, table, database view, or widget.', inputSchema: object({ canvasId: string, type: { type: 'string', enum: ['shape', 'sticky', 'text', 'document', 'table', 'link', 'image', 'file', 'pdf', 'database', 'section', 'frame', 'widget'] }, position: object({ x: number, y: number, w: number, h: number }), config: { type: 'object' }, style: { type: 'object' } }, ['type', 'position']) },
   { name: 'canvas_connect_elements', description: 'Connect two canvas elements with a labeled relationship line.', inputSchema: object({ canvasId: string, sourceId: string, targetId: string, label: string }, ['sourceId', 'targetId']) },
   { name: 'canvas_group_elements', description: 'Group selected canvas elements together.', inputSchema: object({ canvasId: string, elementIds: { type: 'array', items: string }, name: string }, ['elementIds']) },
   { name: 'canvas_ungroup_elements', description: 'Remove a group while keeping its member elements.', inputSchema: object({ canvasId: string, groupId: string }, ['groupId']) },
@@ -375,7 +383,7 @@ function recordCanvasChange(canvas, before, action, value) {
   if (canvas.actions.length > 1000) canvas.actions.splice(0, canvas.actions.length - 1000);
 }
 
-function applyConductorAction(store, action) {
+async function applyConductorAction(store, action, options = {}) {
   if (!action || typeof action !== 'object' || typeof action.action !== 'string') fail('action must be a Conductor action object.');
   if (action.actor !== undefined && !['user', 'agent', 'system'].includes(action.actor)) fail('actor must be user, agent, or system.');
   const canvas = canvasById(store, action.canvasId);
@@ -437,6 +445,16 @@ function applyConductorAction(store, action) {
       }
       break;
     }
+    case 'widget.action': {
+      const widgetAction = action.widgetAction;
+      if (!widgetAction || widgetAction.kind !== 'refresh' || typeof widgetAction.sourceId !== 'string' || !widgetAction.sourceId) fail('widget.action supports refresh with a sourceId.');
+      if (typeof canvas.projectPath !== 'string' || !canvas.projectPath) fail('Bind this canvas to a project folder before refreshing workbench data.');
+      const source = await projectDatabase.invoke({ projectPath: canvas.projectPath, command: { type: 'source.get', sourceId: widgetAction.sourceId } });
+      const viewId = source.views?.[0]?.id;
+      const data = await projectDatabase.invoke({ projectPath: canvas.projectPath, command: { type: 'query', sourceId: widgetAction.sourceId, ...(viewId ? { viewId } : {}), limit: 200 } });
+      value = { workbench: { sourceId: widgetAction.sourceId, snapshot: data, refreshedAt: Date.now() } };
+      break;
+    }
     case 'element.create': {
       if (!String(action.elementKind || '').trim()) fail('elementKind is required.');
       const element = actionElement(canvas, String(action.elementKind), action.position, action.config || {}, { vizSpec: action.vizSpec || null, ...(action.permissions ? { permissions: action.permissions } : {}) }); value = { element }; break;
@@ -479,7 +497,7 @@ function applyConductorAction(store, action) {
     case 'element.move': case 'element.update': {
       const element = requireElement(action.elementId);
       if (action.position) positionPatch(element, action.position);
-      if (action.config) element.config = { ...action.config };
+      if (action.config) element.config = { ...element.config, ...action.config };
       if (action.metadata) element.metadata = { ...element.metadata, ...action.metadata };
       if (action.vizSpec !== undefined) element.vizSpec = action.vizSpec;
       if (action.action === 'element.update') element.updatedAt = Date.now();
@@ -555,8 +573,113 @@ function applyConductorAction(store, action) {
   }
   recordCanvasChange(canvas, before, action, value);
   canvas.updatedAt = now();
-  writeStore(store);
+  if (options.persist !== false) writeStore(store);
   return { success: true, result: value, snapshot: snapshot(canvas) };
+}
+
+const AGENT_NATIVE_TYPES = new Set(['text', 'sticky', 'shape', 'table', 'link', 'document', 'section', 'frame', 'database', 'image', 'file']);
+const MAX_AGENT_ACTIONS = 12;
+
+function isRecord(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
+function validateAgentObject(value, name, maxBytes = 20_000) {
+  if (!isRecord(value)) fail(`${name} must be an object.`);
+  let encoded;
+  try { encoded = JSON.stringify(value); } catch { fail(`${name} must be JSON serializable.`); }
+  if (Buffer.byteLength(encoded) > maxBytes) fail(`${name} is too large.`);
+  return JSON.parse(encoded);
+}
+function validateAgentPosition(input, partial = false) {
+  if (!isRecord(input)) fail('Agent element position must be an object.');
+  const allowed = new Set(['x', 'y', 'w', 'h', 'zIndex', 'rotation']);
+  if (Object.keys(input).some((key) => !allowed.has(key))) fail('Agent position contains unsupported fields.');
+  const position = {};
+  for (const key of allowed) {
+    if (input[key] === undefined && partial) continue;
+    const value = Number(input[key]);
+    if (!Number.isFinite(value)) fail(`Agent position ${key} must be finite.`);
+    if ((key === 'x' || key === 'y') && Math.abs(value) > 10_000) fail(`Agent position ${key} is out of range.`);
+    if ((key === 'w' || key === 'h') && (value <= 0 || value > 4_000)) fail(`Agent position ${key} must be between 0 and 4,000.`);
+    if (key === 'rotation' && Math.abs(value) > 360) fail('Agent rotation must be between -360 and 360 degrees.');
+    position[key] = value;
+  }
+  return position;
+}
+function validateAgentActions(actions, canvas) {
+  if (!Array.isArray(actions) || actions.length > MAX_AGENT_ACTIONS) fail(`Canvas agent may apply at most ${MAX_AGENT_ACTIONS} actions at once.`);
+  const existingIds = new Set(canvas.elements.map((element) => element.id));
+  return actions.map((item, index) => {
+    if (!isRecord(item) || typeof item.kind !== 'string') fail(`Canvas agent action ${index + 1} is malformed.`);
+    switch (item.kind) {
+      case 'create': {
+        if (!AGENT_NATIVE_TYPES.has(item.nodeType)) fail(`Canvas agent cannot create native type ${String(item.nodeType)}.`);
+        const content = validateAgentObject(item.content || {}, 'Agent element content');
+        const position = validateAgentPosition(item.position);
+        const style = item.style === undefined ? undefined : validateAgentObject(item.style, 'Agent element style', 5000);
+        return { action: 'element.create_native', canvasId: canvas.id, nodeType: item.nodeType, position, content, ...(style ? { style } : {}) };
+      }
+      case 'update': {
+        if (typeof item.elementId !== 'string' || !existingIds.has(item.elementId)) fail(`Canvas agent cannot update unknown element ${String(item.elementId)}.`);
+        const action = { action: 'element.update', canvasId: canvas.id, elementId: item.elementId };
+        if (item.position !== undefined) action.position = validateAgentPosition(item.position, true);
+        if (item.content !== undefined) action.config = validateAgentObject(item.content, 'Agent content update');
+        if (!action.position && !action.config) fail('Canvas agent update must change position or content.');
+        return action;
+      }
+      case 'connect': {
+        if (typeof item.sourceId !== 'string' || !existingIds.has(item.sourceId) || typeof item.targetId !== 'string' || !existingIds.has(item.targetId)) fail('Canvas agent connectors must reference existing elements.');
+        if (item.sourceId === item.targetId) fail('Canvas agent cannot connect an element to itself.');
+        return { action: 'connector.create', canvasId: canvas.id, source: { nodeId: item.sourceId, anchorId: 'center' }, target: { nodeId: item.targetId, anchorId: 'center' }, label: typeof item.label === 'string' ? item.label.slice(0, 200) : '' };
+      }
+      case 'group': {
+        if (!Array.isArray(item.memberIds) || item.memberIds.length < 2 || item.memberIds.length > 40 || item.memberIds.some((id) => typeof id !== 'string' || !existingIds.has(id))) fail('Canvas agent groups must contain 2 to 40 existing element IDs.');
+        return { action: 'group.create', canvasId: canvas.id, memberIds: [...new Set(item.memberIds)], title: typeof item.title === 'string' ? item.title.slice(0, 120) : 'Group' };
+      }
+      default: fail(`Canvas agent action kind ${item.kind} is not allowed.`);
+    }
+  });
+}
+
+function safeSnapshotForAgent(canvas) {
+  const clean = (value, key = '') => {
+    if (typeof value === 'string') {
+      if (/base64|snapshotUrl|dataUrl/i.test(key) || value.startsWith('data:')) return '[image asset omitted]';
+      return value.length > 20_000 ? `${value.slice(0, 20_000)}…` : value;
+    }
+    if (Array.isArray(value)) return value.slice(0, 1000).map((item) => clean(item));
+    if (isRecord(value)) return Object.fromEntries(Object.entries(value).slice(0, 150).map(([name, item]) => [name, clean(item, name)]));
+    return value;
+  };
+  const value = clean(snapshot(canvas));
+  if (Buffer.byteLength(JSON.stringify(value)) > 2 * 1024 * 1024) fail('Canvas snapshot is too large for an agent request.');
+  return value;
+}
+
+async function requestCanvasActions(input) {
+  if (!isRecord(input) || typeof input.canvasId !== 'string' || !input.canvasId) fail('canvasId is required.');
+  const initial = await withStoreLock(async () => {
+    const store = readStore();
+    const canvas = canvasById(store, input.canvasId);
+    const canvasSnapshot = snapshot(canvas);
+    return { revision: Number(canvas.actionCursor) || 0, fingerprint: createHash('sha256').update(JSON.stringify(canvasSnapshot)).digest('hex'), snapshot: safeSnapshotForAgent(canvas) };
+  });
+  const selectedModel = typeof input.model === 'string' ? input.model.replace(/^\[[^\]]+\]\s*/, '') : undefined;
+  const proposal = await requestCanvasAgent({ prompt: input.prompt, model: selectedModel, snapshot: initial.snapshot });
+  return withStoreLock(async () => {
+    const currentStore = readStore();
+    const currentCanvas = canvasById(currentStore, input.canvasId);
+    const currentFingerprint = createHash('sha256').update(JSON.stringify(snapshot(currentCanvas))).digest('hex');
+    if ((Number(currentCanvas.actionCursor) || 0) !== initial.revision || currentFingerprint !== initial.fingerprint) fail('Canvas changed while the agent was thinking. Review the latest canvas and send the request again.');
+    const actions = validateAgentActions(proposal.actions, currentCanvas);
+    const working = JSON.parse(JSON.stringify(currentStore));
+    const applied = [];
+    for (const action of actions) {
+      const outcome = await applyConductorAction(working, action, { persist: false });
+      applied.push({ action: action.action, ...(outcome.result?.element?.id ? { elementId: outcome.result.element.id } : {}) });
+    }
+    if (actions.length) writeStore(working);
+    const updatedCanvas = canvasById(working, input.canvasId);
+    return { message: proposal.message, applied, snapshot: snapshot(updatedCanvas) };
+  });
 }
 
 async function callUnlocked(name, input) {
@@ -589,16 +712,16 @@ async function callUnlocked(name, input) {
       default: fail('Unsupported canvas_manage action.');
     }
   } else if (name === 'canvas_group_list') {
-    result = { groups: store.groups };
+    result = { groups: input.projectPath == null ? store.groups : store.groups.filter((group) => group.projectPath == null || group.projectPath === input.projectPath) };
   } else if (name === 'canvas_group_create') {
-    const group = { id: randomUUID(), name: String(input.name || '').trim().slice(0, 80) || fail('name is required.'), createdAt: now() }; store.groups.push(group); writeStore(store); result = { group };
+    const group = { id: randomUUID(), name: String(input.name || '').trim().slice(0, 80) || fail('name is required.'), projectPath: input.projectPath == null ? null : String(input.projectPath), createdAt: now() }; store.groups.push(group); writeStore(store); result = { group };
   } else if (name === 'canvas_group_rename') {
     const group = store.groups.find((item) => item.id === input.groupId); if (!group) fail('Group not found.'); group.name = String(input.name || '').trim().slice(0, 80) || fail('name is required.'); writeStore(store); result = { group };
   } else if (name === 'canvas_group_delete') {
     const group = store.groups.find((item) => item.id === input.groupId); if (!group) fail('Group not found.'); store.groups = store.groups.filter((item) => item.id !== group.id); store.canvases.forEach((canvas) => { if (canvas.groupId === group.id) canvas.groupId = null; }); writeStore(store); result = { deleted: group.id };
   } else if (name === 'canvas_create') {
     if (store.canvases.length >= MAX_CANVASES) fail('Canvas limit reached.');
-    const canvas = { id: randomUUID(), name: String(input.name || 'Untitled canvas').trim().slice(0, 100), description: String(input.description || ''), layoutConfig: {}, sortOrder: 0, projectPath: null, createdAt: now(), updatedAt: now(), isFavorite: false, tags: [], groupId: null, elements: [], widgets: [], actionCursor: 0, undoStack: [], redoStack: [] };
+    const canvas = { id: randomUUID(), name: String(input.name || 'Untitled canvas').trim().slice(0, 100), description: String(input.description || ''), layoutConfig: {}, sortOrder: 0, projectPath: input.projectPath || null, createdAt: now(), updatedAt: now(), isFavorite: false, tags: [], groupId: null, elements: [], widgets: [], actionCursor: 0, undoStack: [], redoStack: [] };
     store.canvases.unshift(canvas); store.currentCanvasId = canvas.id; writeStore(store); result = { canvas: summary(canvas), currentCanvasId: canvas.id };
   } else if (name === 'canvas_rename') {
     const canvas = canvasById(store, input.canvasId); canvas.name = String(input.name || '').trim().slice(0, 100) || fail('name is required.'); canvas.updatedAt = now(); writeStore(store); result = { canvas: summary(canvas) };
@@ -606,6 +729,7 @@ async function callUnlocked(name, input) {
     const canvas = canvasById(store, input.canvasId);
     if (input.name !== undefined) canvas.name = String(input.name).trim().slice(0, 100) || fail('name is required.');
     if (input.description !== undefined) canvas.description = input.description === null ? null : String(input.description);
+    if (input.projectPath !== undefined) canvas.projectPath = input.projectPath === null ? null : String(input.projectPath);
     if (input.layoutConfig !== undefined) canvas.layoutConfig = input.layoutConfig && typeof input.layoutConfig === 'object' ? input.layoutConfig : {};
     if (input.sortOrder !== undefined) canvas.sortOrder = finite(input.sortOrder, 'sortOrder', 0);
     if (input.isFavorite !== undefined) canvas.isFavorite = input.isFavorite === true;
@@ -621,22 +745,7 @@ async function callUnlocked(name, input) {
   } else if (name === 'canvas_delete') {
     const canvas = canvasById(store, input.canvasId); store.canvases = store.canvases.filter((item) => item.id !== canvas.id); if (store.currentCanvasId === canvas.id) store.currentCanvasId = store.canvases[0]?.id || null; writeStore(store); result = { deleted: canvas.id, currentCanvasId: store.currentCanvasId };
   } else if (name === 'canvas_execute_action') {
-    result = applyConductorAction(store, input.action);
-  } else if (name === 'canvas_project_database') {
-    if (!input.request || typeof input.request !== 'object') fail('request must include projectPath and command.');
-    result = await projectDatabase.invoke(input.request);
-  } else if (name === 'canvas_settings_get') {
-    result = { value: await settingsStore.get(input.key) };
-  } else if (name === 'canvas_settings_set') {
-    result = { success: await settingsStore.set(input.key, input.value) };
-  } else if (name === 'canvas_provider_status') {
-    result = await settingsStore.providerStatus();
-  } else if (name === 'canvas_provider_list') {
-    result = { providers: await settingsStore.listProviders() };
-  } else if (name === 'canvas_provider_configure') {
-    result = await settingsStore.configureProvider(input);
-  } else if (name === 'canvas_refine_call') {
-    result = await callRefine(input);
+    result = await applyConductorAction(store, input.action);
   } else if (name === 'canvas_get_knowledge') {
     result = { coordinateSystem: 'Canvas uses 40 × 30 grid units with origin at the top-left.', guidance: 'Leave breathing room between elements, place related notes close together, and connect only directly related items.' };
   } else if (name === 'canvas_import') {
@@ -691,7 +800,9 @@ async function callUnlocked(name, input) {
         const elementTypes = ['shape', 'sticky', 'text', 'document', 'table', 'link', 'image', 'file', 'pdf', 'database', 'section', 'frame', 'widget'];
         if (!elementTypes.includes(input.type)) fail('Unsupported canvas element type.');
         const nativeKinds = ['shape', 'sticky', 'text', 'document', 'table', 'link', 'image', 'file', 'pdf', 'database', 'section', 'frame'];
-        const element = { id: randomUUID(), canvasId: canvas.id, type: input.type, elementKind: input.type.startsWith('native/') ? input.type : nativeKinds.includes(input.type) ? `native/${input.type}` : input.type === 'widget' ? 'widget/dynamic' : input.type, nativeKind: nativeKinds.includes(input.type) ? input.type : undefined, position: clampPosition(input.position || {}), config: input.config && typeof input.config === 'object' ? input.config : {}, createdAt: now(), updatedAt: now() };
+        const config = input.config && typeof input.config === 'object' ? { ...input.config } : {};
+        if (input.style && typeof input.style === 'object') config.style = { ...input.style };
+        const element = { id: randomUUID(), canvasId: canvas.id, type: input.type, elementKind: input.type.startsWith('native/') ? input.type : nativeKinds.includes(input.type) ? `native/${input.type}` : input.type === 'widget' ? 'widget/dynamic' : input.type, nativeKind: nativeKinds.includes(input.type) ? input.type : undefined, position: clampPosition(input.position || {}), config, createdAt: now(), updatedAt: now() };
         canvas.elements.push(element); result = { element }; break;
       }
       case 'canvas_connect_elements': {
@@ -765,7 +876,56 @@ async function callUnlocked(name, input) {
   return result;
 }
 
-function call(name, input) { return withStoreLock(() => callUnlocked(name, input)); }
+async function refreshWorkbench(input) {
+  if (!isRecord(input) || !isRecord(input.action) || !isRecord(input.action.widgetAction)) fail('widget.action request is malformed.');
+  const { canvasId, widgetAction } = input.action;
+  if (widgetAction.kind !== 'refresh' || typeof widgetAction.sourceId !== 'string' || !widgetAction.sourceId) fail('widget.action supports refresh with a sourceId.');
+  const projectPath = await withStoreLock(() => {
+    const canvas = canvasById(readStore(), canvasId);
+    if (typeof canvas.projectPath !== 'string' || !canvas.projectPath) fail('Bind this canvas to a project folder before refreshing workbench data.');
+    return canvas.projectPath;
+  });
+  const source = await projectDatabase.invoke({ projectPath, command: { type: 'source.get', sourceId: widgetAction.sourceId } });
+  const viewId = source.views?.[0]?.id;
+  const data = await projectDatabase.invoke({ projectPath, command: { type: 'query', sourceId: widgetAction.sourceId, ...(viewId ? { viewId } : {}), limit: 200 } });
+  return withStoreLock(() => {
+    const store = readStore();
+    const canvas = canvasById(store, canvasId);
+    if (canvas.projectPath !== projectPath) fail('Canvas project binding changed during workbench refresh.');
+    const widget = (canvas.widgets || []).find((item) => item.id === input.action.elementId || item.id === input.action.widgetId);
+    if (!widget) fail('Workbench widget not found.');
+    const before = { elements: JSON.parse(JSON.stringify(canvas.elements)), widgets: JSON.parse(JSON.stringify(canvas.widgets || [])) };
+    const refreshedAt = Date.now();
+    widget.data = { ...(widget.data || {}), snapshot: data, sourceId: widgetAction.sourceId, refreshedAt };
+    widget.updatedAt = refreshedAt;
+    canvas.undoStack = canvas.undoStack || []; canvas.undoStack.push(before); if (canvas.undoStack.length > 100) canvas.undoStack.shift(); canvas.redoStack = [];
+    canvas.updatedAt = now(); canvas.actionCursor = (canvas.actionCursor || 0) + 1; writeStore(store);
+    return { success: true, result: { workbench: { sourceId: widgetAction.sourceId, snapshot: data, refreshedAt }, widget } };
+  });
+}
+
+async function call(name, input) {
+  // These capabilities have their own storage or network lock. In particular,
+  // never hold the canvas store lock while waiting for an LLM or project DB.
+  if (name === 'canvas_agent_request') return requestCanvasActions(input);
+  if (name === 'canvas_capture_request') {
+    if (!isRecord(input) || typeof input.canvasId !== 'string' || !input.canvasId) fail('canvasId is required.');
+    await withStoreLock(() => canvasById(readStore(), input.canvasId));
+    const captured = await captureSpool.createRequest(input);
+    return { __canvasCaptureImage: true, ...captured };
+  }
+  if (name === 'canvas_capture_poll') return captureSpool.poll();
+  if (name === 'canvas_capture_complete') return captureSpool.complete(input);
+  if (name === 'canvas_settings_get') return { value: await settingsStore.get(input.key) };
+  if (name === 'canvas_settings_set') return { success: await settingsStore.set(input.key, input.value) };
+  if (name === 'canvas_provider_status') return settingsStore.providerStatus();
+  if (name === 'canvas_provider_list') return { providers: await settingsStore.listProviders() };
+  if (name === 'canvas_provider_configure') return settingsStore.configureProvider(input);
+  if (name === 'canvas_refine_call') return callRefine(input);
+  if (name === 'canvas_project_database') return projectDatabase.invoke(input.request);
+  if (name === 'canvas_execute_action' && input.action?.action === 'widget.action') return refreshWorkbench(input);
+  return withStoreLock(() => callUnlocked(name, input));
+}
 
 function send(message) { process.stdout.write(`${JSON.stringify(message)}\n`); }
 function errorResponse(id, error) { return { jsonrpc: '2.0', id, error: { code: -32000, message: error instanceof Error ? error.message : String(error) } }; }
@@ -778,7 +938,13 @@ async function handle(message) {
     if (message.method === 'tools/call') {
       const name = message.params?.name; const input = message.params?.arguments || {};
       if (!tools.some((tool) => tool.name === name)) fail(`Unknown tool: ${name}`);
-      try { const value = await call(name, input); return { jsonrpc: '2.0', id: message.id, result: text(value) }; }
+      try {
+        const value = await call(name, input);
+        const result = value?.__canvasCaptureImage
+          ? { content: [{ type: 'text', text: JSON.stringify({ requestId: value.requestId, canvasId: value.canvasId, width: value.image.width, height: value.image.height, mimeType: value.image.mimeType }) }, { type: 'image', data: value.image.base64, mimeType: value.image.mimeType }], structuredContent: { requestId: value.requestId, canvasId: value.canvasId, width: value.image.width, height: value.image.height, mimeType: value.image.mimeType } }
+          : text(value);
+        return { jsonrpc: '2.0', id: message.id, result };
+      }
       catch (error) { return { jsonrpc: '2.0', id: message.id, result: { content: [{ type: 'text', text: error.message || String(error) }], isError: true } }; }
     }
     fail(`Unsupported MCP method: ${message.method}`);
@@ -786,16 +952,17 @@ async function handle(message) {
 }
 
 let input = '';
-let requestQueue = Promise.resolve();
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (chunk) => {
   input += chunk;
   while (true) {
     const index = input.indexOf('\n'); if (index < 0) break;
     const line = input.slice(0, index); input = input.slice(index + 1); if (!line.trim()) continue;
-    requestQueue = requestQueue.then(async () => {
+    // Requests must be multiplexed: canvas_capture_request waits while the
+    // renderer polls/completes it over this same MCP process.
+    void (async () => {
       try { const response = await handle(JSON.parse(line)); if (response) send(response); }
       catch (error) { send(errorResponse(null, error)); }
-    });
+    })();
   }
 });

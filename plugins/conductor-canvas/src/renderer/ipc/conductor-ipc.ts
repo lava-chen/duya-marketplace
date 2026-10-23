@@ -99,7 +99,7 @@ export async function createElement(canvasId: string, elementKind: string, posit
   return executeAction({ action: "element.create", canvasId, elementKind: elementKind as any, position, vizSpec: vizSpec as any, config });
 }
 export async function createNativeElement(canvasId: string, nodeType: string, position: { x: number; y: number; w: number; h: number; zIndex: number; rotation: number }, content: Record<string, unknown>, style?: Record<string, unknown>): Promise<any> {
-  return executeAction({ action: "element.create_native", canvasId, nodeType, position, content: { ...content, ...(style || {}) } });
+  return executeAction({ action: "element.create_native", canvasId, nodeType, position, content, ...(style ? { style } : {}) } as any);
 }
 export async function createConnector(canvasId: string, source: ConnectorEndpoint, target: ConnectorEndpoint, options: Record<string, unknown> = {}): Promise<any> {
   return executeAction({ action: "connector.create", canvasId, source, target, ...options } as any);
@@ -136,6 +136,12 @@ export async function captureLinkSnapshot(_canvasId: string, _elementId: string,
   };
 }
 export async function widgetAction(request: { canvasId: string; elementId: string; action: { kind: "refresh"; sourceId?: string } }): Promise<unknown> {
-  return executeAction({ action: "widget.action", canvasId: request.canvasId, elementId: request.elementId, widgetAction: request.action } as any);
+  const result = await executeAction({ action: "widget.action", canvasId: request.canvasId, elementId: request.elementId, widgetAction: request.action } as any);
+  const workbench = result?.result?.workbench;
+  if (workbench?.sourceId && workbench.snapshot !== undefined) {
+    const { useConductorStore } = await import("../stores/conductor-store");
+    useConductorStore.getState().applyWorkbenchData(request.canvasId, { [workbench.sourceId]: workbench.snapshot }, workbench.refreshedAt);
+  }
+  return result;
 }
 export type { ConductorCanvas, ConductorCanvasGroup, ConductorWidget, ConductorSnapshot, ConductorActionRequest, CanvasElement, ConductorV2Snapshot } from "../types/conductor";
