@@ -4,31 +4,23 @@
 // This plugin owns the MCP tool boundary. A platform-native Cua Driver is a
 // subprocess, but only this reviewed desktop-tool subset reaches the agent.
 //
-// The driver lifecycle lives in driver-client.cjs, the observation bookkeeping
-// in observation.cjs and the coordinate rules in geometry.cjs.
+// The server is a thin adapter: the driver lifecycle lives in driver-client.cjs,
+// the access decision in policy.cjs, the observation bookkeeping in
+// observation.cjs, the capture handling in screenshot.cjs and the trail in
+// audit.cjs.
+const { randomUUID } = require('node:crypto');
 const { createDriverClient } = require('./driver-client.cjs');
-const { checkAppAccess, parsePolicy, validateKeyCombo, validateText, writeTools } = require('./policy.cjs');
-const { audit } = require('./audit.cjs');
+const { evaluateWriteCall, parsePolicy, toolTier, writeTools } = require('./policy.cjs');
+const { createAuditor, defaultAuditPath } = require('./audit.cjs');
 const { parseDriverObservation } = require('./identity.cjs');
 const { createObservationStore } = require('./observation.cjs');
 const { parseDisplayMetrics, toDriverCoordinates } = require('./geometry.cjs');
 const { createScreenshotService } = require('./screenshot.cjs');
 const { getRevocation, revokeFor } = require('./control-state.cjs');
 
-// An explicit path makes managed installs predictable; otherwise let the OS
-// resolve the official executable from PATH.
-const configuredDriverPath = process.env.CUA_DRIVER_PATH?.trim();
-const driverPath = configuredDriverPath || (process.platform === 'win32' ? 'cua-driver.exe' : 'cua-driver');
-// Extra arguments are optional; the default launches the driver's MCP mode.
-const configuredDriverArgs = process.env.CUA_DRIVER_ARGS?.trim();
-function driverArgs() {
-  if (!configuredDriverArgs) return ['mcp'];
-  try {
-    const parsed = JSON.parse(configuredDriverArgs);
-    if (Array.isArray(parsed) && parsed.every((value) => typeof value === 'string')) return parsed;
-  } catch {}
-  return ['mcp'];
-}
+const PLUGIN_VERSION = '0.4.0';
+const MINIMUM_DRIVER_VERSION = '0.38.0';
+
 const allowed = new Set([
   'get_guide', 'check_permissions', 'get_desktop_state', 'get_window_state',
   'list_windows', 'list_apps', 'get_accessibility_tree', 'get_screen_size',
@@ -54,25 +46,29 @@ const localTools = [
     },
   },
 ];
-function getPolicy() {
-  try { return parsePolicy(process.env.COMPUTER_USE_ACCESS_POLICY); }
-  catch (cause) { throw new Error(`Invalid Computer Use access policy: ${cause.message}`); }
-}
-function hasAppRestrictions(policy) {
-  return policy.default_access === 'deny' || policy.allowed_apps.length > 0 || policy.denied_apps.length > 0;
-}
+
 function envNumber(name, fallback) {
   const value = Number(process.env[name]);
   return Number.isFinite(value) && value >= 0 ? value : fallback;
 }
+
 const observationTtlMs = envNumber('COMPUTER_USE_OBSERVATION_TTL_MS', 1500);
 const screenshotTtlMs = envNumber('COMPUTER_USE_SCREENSHOT_TTL_MS', 5000);
+const minimumDriverVersion = process.env.COMPUTER_USE_MIN_DRIVER_VERSION?.trim() || MINIMUM_DRIVER_VERSION;
 
-function requestsWindow(args = {}) {
-  const target = args.target && typeof args.target === 'object' ? args.target : {};
-  const named = [args.window_id, args.windowId, args.hwnd, args.target_window_id, args.targetWindowId, target.window_id, target.windowId]
-    .some((value) => (typeof value === 'string' && value.trim()) || (typeof value === 'number' && Number.isFinite(value)));
-  return named || typeof args.element_token === 'string' || typeof args.pid === 'number';
+// An explicit path makes managed installs predictable; otherwise let the OS
+// resolve the official executable from PATH.
+const configuredDriverPath = process.env.CUA_DRIVER_PATH?.trim();
+const driverPath = configuredDriverPath || (process.platform === 'win32' ? 'cua-driver.exe' : 'cua-driver');
+// Extra arguments are optional; the default launches the driver's MCP mode.
+const configuredDriverArgs = process.env.CUA_DRIVER_ARGS?.trim();
+function driverArgs() {
+  if (!configuredDriverArgs) return ['mcp'];
+  try {
+    const parsed = JSON.parse(configuredDriverArgs);
+    if (Array.isArray(parsed) && parsed.every((value) => typeof value === 'string')) return parsed;
+  } catch {}
+  return ['mcp'];
 }
 
 const driverEnv = {};
@@ -84,38 +80,32 @@ for (const name of [
 ]) {
   if (process.env[name] !== undefined) driverEnv[name] = process.env[name];
 }
+
 const driver = createDriverClient({
   command: driverPath,
   args: driverArgs(),
   env: driverEnv,
-  minimumVersion: process.env.COMPUTER_USE_MIN_DRIVER_VERSION?.trim() || '0.38.0',
+  minimumVersion: minimumDriverVersion,
   logger: { warn: (message) => process.stderr.write(`${message}\n`), debug: () => {} },
 });
 const observations = createObservationStore({ ttlMs: observationTtlMs, snapshotTtlMs: 30_000 });
 const screenshots = createScreenshotService({ ttlMs: screenshotTtlMs });
+const auditor = createAuditor({ file: defaultAuditPath() });
 
-// The plugin does not capture the screen itself: the driver returns the image
-// with the observation. This adds the crop, the format and the freshness
-// contract, plus a cache so a repeated capture does not hit the driver again.
-async function captureScreenshot(args = {}) {
-  const windowId = args.window_id ?? args.windowId ?? null;
-  const pid = typeof args.pid === 'number' ? args.pid : null;
-  const target = windowId !== null || pid !== null ? { window_id: windowId, pid } : {};
-  const tool = windowId !== null || pid !== null ? 'get_window_state' : 'get_desktop_state';
-  const result = await driver.call('tools/call', { name: tool, arguments: target });
-  recordObservation(tool, target, result);
-  return screenshots.capture({
-    result,
-    key: `${tool}:${windowId ?? 'desktop'}:${pid ?? ''}`,
-    region: args.region || null,
-    format: args.format || null,
-    maxAgeMs: Number.isFinite(Number(args.max_age_ms)) ? Number(args.max_age_ms) : screenshotTtlMs,
-    refresh: args.refresh === true,
-  });
+function getPolicy() {
+  try { return parsePolicy(process.env.COMPUTER_USE_ACCESS_POLICY); }
+  catch (cause) { throw new Error(`Invalid Computer Use access policy: ${cause.message}`); }
+}
+
+function requestsWindow(args = {}) {
+  const target = args.target && typeof args.target === 'object' ? args.target : {};
+  const named = [args.window_id, args.windowId, args.hwnd, args.target_window_id, args.targetWindowId, target.window_id, target.windowId]
+    .some((value) => (typeof value === 'string' && value.trim()) || (typeof value === 'number' && Number.isFinite(value)));
+  return named || typeof args.element_token === 'string' || typeof args.pid === 'number';
 }
 
 // Refresh the desktop observation when the cached one is too old. The
-// observation is reused inside its lifetime, so a burst of writes does not
+// observation is reused inside its lifetime so a burst of writes does not
 // capture the whole screen again.
 async function ensureObservation(args = {}, name = '') {
   const cached = observations.snapshot();
@@ -171,13 +161,9 @@ function recordObservation(name, args, result) {
     return;
   }
   if (name === 'get_window_state') {
-    const body = result?.structuredContent || {};
-    const snapshotId = typeof body.snapshot_id === 'string'
-      ? body.snapshot_id
-      : (Array.isArray(result?.content)
-        ? result.content.find((block) => block.type === 'text')?.text?.match(/snapshot_id[=: ]+(s[0-9a-f]{8})/i)?.[1] || null
-        : null);
+    const snapshotId = snapshotIdOf(result);
     if (!snapshotId) return;
+    const body = result?.structuredContent || {};
     const requestedId = args.window_id ?? args.windowId ?? null;
     const requestedPid = typeof args.pid === 'number' ? args.pid : null;
     const observed = (observations.snapshot()?.windows || []).find((window) => (
@@ -195,31 +181,147 @@ function recordObservation(name, args, result) {
   }
 }
 
+function snapshotIdOf(result) {
+  const body = result?.structuredContent || {};
+  if (typeof body.snapshot_id === 'string') return body.snapshot_id;
+  if (Array.isArray(result?.content)) {
+    const text = result.content.find((block) => block.type === 'text')?.text || '';
+    return text.match(/snapshot_id[=: ]+(s[0-9a-f]{8})/i)?.[1] || null;
+  }
+  return null;
+}
+
+async function recordAudit(entry) {
+  try { await auditor.record(entry); }
+  catch (cause) { process.stderr.write(`Computer Use audit write failed: ${cause.message}\n`); }
+}
+
+// The plugin does not capture the screen itself: the driver returns the image
+// with the observation. This adds the crop, the format and the freshness
+// contract, plus a cache so a repeated capture does not hit the driver again.
+async function captureScreenshot(args = {}) {
+  const windowId = args.window_id ?? args.windowId ?? null;
+  const pid = typeof args.pid === 'number' ? args.pid : null;
+  const target = windowId !== null || pid !== null ? { window_id: windowId, pid } : {};
+  const tool = windowId !== null || pid !== null ? 'get_window_state' : 'get_desktop_state';
+  const result = await driver.call('tools/call', { name: tool, arguments: target });
+  recordObservation(tool, target, result);
+  return screenshots.capture({
+    result,
+    key: `${tool}:${windowId ?? 'desktop'}:${pid ?? ''}`,
+    region: args.region || null,
+    format: args.format || null,
+    maxAgeMs: Number.isFinite(Number(args.max_age_ms)) ? Number(args.max_age_ms) : screenshotTtlMs,
+    refresh: args.refresh === true,
+  });
+}
+
+async function callDriverTool(name, args) {
+  const startedAt = Date.now();
+  const callId = randomUUID();
+  const tier = toolTier(name);
+  if (!allowed.has(name) || !driver.tools.has(name)) {
+    throw new Error(`Computer Use tool unavailable: ${name}`);
+  }
+  let policy = null;
+  let target = null;
+  let generation = null;
+  if (writeTools.has(name)) {
+    const revocation = await getRevocation();
+    if (revocation.revoked) {
+      const reason = 'Computer Use is revoked. Ask the user before resuming.';
+      await recordAudit({
+        callId, tool: name, tier, result: 'denied',
+        policy: { decision: 'deny', rule: 'revoked', reason },
+        durationMs: Date.now() - startedAt, args,
+      });
+      throw new Error(reason);
+    }
+    policy = getPolicy();
+    const observation = await ensureObservation(args, name);
+    generation = observation.generation;
+    const resolved = observations.resolveTarget({ args, name });
+    if (resolved.error) {
+      await recordAudit({
+        callId, tool: name, tier, generation, result: 'denied',
+        policy: { decision: 'deny', rule: 'no-target', reason: resolved.error },
+        durationMs: Date.now() - startedAt, args,
+      });
+      throw new Error(resolved.error);
+    }
+    target = resolved.target;
+    const verdict = evaluateWriteCall({ policy, revoked: revocation.revoked, target, tool: name, args });
+    if (!verdict.allowed) {
+      await recordAudit({
+        callId, tool: name, tier, generation, target, result: 'denied',
+        policy: { decision: 'deny', rule: verdict.rule, reason: verdict.reason },
+        durationMs: Date.now() - startedAt, args,
+      });
+      throw new Error(verdict.reason);
+    }
+    args = applyCoordinateConversion(args, observation.metrics);
+  }
+  try {
+    const result = await driver.call('tools/call', { name, arguments: args });
+    recordObservation(name, args, result);
+    await recordAudit({
+      callId,
+      tool: name,
+      tier,
+      generation,
+      target,
+      result: 'allowed',
+      policy: policy ? { decision: 'allow', rule: 'allowed', reason: null } : null,
+      durationMs: Date.now() - startedAt,
+      args,
+    });
+    return { result };
+  } catch (cause) {
+    await recordAudit({
+      callId,
+      tool: name,
+      tier,
+      generation,
+      target,
+      result: 'error',
+      policy: policy ? { decision: 'allow', rule: 'allowed', reason: null } : null,
+      errorCode: 'DRIVER_ERROR',
+      durationMs: Date.now() - startedAt,
+      args,
+    });
+    throw cause;
+  }
+}
+
 function send(message) { process.stdout.write(`${JSON.stringify(message)}\n`); }
 function error(id, message, code = -32000) { return { jsonrpc: '2.0', id, error: { code, message } }; }
+function reply(id, result) { return { jsonrpc: '2.0', id, result }; }
 
 async function handle(message) {
   if (!message || message.jsonrpc !== '2.0' || message.id === undefined) return null;
-  const reply = (result) => ({ jsonrpc: '2.0', id: message.id, result });
   try {
     if (message.method === 'initialize') {
       const info = await driver.start();
-      return reply({ protocolVersion: info.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: 'computer_cua', version: '0.3.0' } });
+      return reply(message.id, {
+        protocolVersion: info.protocolVersion,
+        capabilities: { tools: {} },
+        serverInfo: { name: 'computer_cua', version: PLUGIN_VERSION },
+      });
     }
-    if (message.method === 'ping') return reply({});
+    if (message.method === 'ping') return reply(message.id, {});
     if (message.method === 'tools/list') {
       const tools = [...driver.tools.values()].filter((tool) => allowed.has(tool.name));
-      return reply({ tools: [...tools, ...localTools] });
+      return reply(message.id, { tools: [...tools, ...localTools] });
     }
     if (message.method === 'tools/call') {
       const name = message.params?.name;
       let args = message.params?.arguments || {};
-      if (name === 'computer_use_status') return reply({ content: [{ type: 'text', text: JSON.stringify(await getRevocation()) }] });
+      if (name === 'computer_use_status') return reply(message.id, { content: [{ type: 'text', text: JSON.stringify(await getRevocation()) }] });
       if (name === 'computer_use_revoke') {
         const seconds = Math.max(1, Math.min(3600, Number(args.duration_seconds) || 120));
         const revokedUntil = await revokeFor(seconds);
-        await audit({ action: name, ok: true, args: { duration_seconds: seconds } }).catch(() => {});
-        return reply({ content: [{ type: 'text', text: JSON.stringify({ revoked: true, revokedUntil, duration_seconds: seconds }) }] });
+        await recordAudit({ callId: randomUUID(), tool: name, tier: toolTier(name), result: 'allowed', args: { duration_seconds: seconds } });
+        return reply(message.id, { content: [{ type: 'text', text: JSON.stringify({ revoked: true, revokedUntil, duration_seconds: seconds }) }] });
       }
       if (name === 'computer_use_screenshot') {
         const capture = await captureScreenshot(args);
@@ -231,7 +333,7 @@ async function handle(message) {
           ageMs: capture.ageMs,
           capturedAt: new Date(capture.capturedAt).toISOString(),
         };
-        return reply({
+        return reply(message.id, {
           content: [
             { type: 'image', data: capture.data, mimeType: capture.mimeType },
             { type: 'text', text: JSON.stringify(summary) },
@@ -239,48 +341,13 @@ async function handle(message) {
           structuredContent: summary,
         });
       }
-      if (!allowed.has(name) || !driver.tools.has(name)) throw new Error(`Computer Use tool unavailable: ${name}`);
-      const startedAt = Date.now();
-      if (writeTools.has(name)) {
-        let denied;
-        const revocation = await getRevocation();
-        if (revocation.revoked) denied = 'Computer Use is revoked. Ask the user before resuming.';
-        if (!denied) {
-          const policy = getPolicy();
-          const observation = await ensureObservation(args, name);
-          const resolved = observations.resolveTarget({ args, name });
-          if (resolved.error) {
-            denied = resolved.error;
-          } else if (!resolved.target && hasAppRestrictions(policy)) {
-            denied = 'App access policy requires a fresh, observed target window identity; re-observe the desktop and select a visible window.';
-          } else {
-            const appVerdict = checkAppAccess(policy, resolved.target || {});
-            if (!appVerdict.allowed) denied = appVerdict.reason;
-          }
-          if (!denied) args = applyCoordinateConversion(args, observation.metrics);
-        }
-        const unsafeKey = !denied && (name === 'press_key' || name === 'hotkey') ? validateKeyCombo(args) : null;
-        if (unsafeKey) denied = `Input blocked by safety policy: ${unsafeKey}`;
-        const text = name === 'type_text' ? args.text : name === 'set_value' ? args.value : null;
-        const unsafeText = !denied && validateText(text);
-        if (unsafeText) denied = `Input blocked by safety policy: ${unsafeText}`;
-        if (denied) {
-          void audit({ action: name, ok: false, errorCode: 'POLICY_DENIED', durationMs: Date.now() - startedAt, args }).catch((cause) => process.stderr.write(`Computer Use audit write failed: ${cause.message}\n`));
-          throw new Error(denied);
-        }
-      }
-      try {
-        const result = await driver.call('tools/call', { name, arguments: args });
-        recordObservation(name, args, result);
-        void audit({ action: name, ok: true, durationMs: Date.now() - startedAt, args }).catch((cause) => process.stderr.write(`Computer Use audit write failed: ${cause.message}\n`));
-        return reply(result);
-      } catch (cause) {
-        void audit({ action: name, ok: false, errorCode: 'DRIVER_ERROR', durationMs: Date.now() - startedAt, args }).catch((auditCause) => process.stderr.write(`Computer Use audit write failed: ${auditCause.message}\n`));
-        throw cause;
-      }
+      const { result } = await callDriverTool(name, args);
+      return reply(message.id, result);
     }
     return error(message.id, 'Method not found', -32601);
-  } catch (cause) { return error(message.id, cause.message || String(cause)); }
+  } catch (cause) {
+    return error(message.id, cause.message || String(cause));
+  }
 }
 
 let hostInput = '';
@@ -295,6 +362,7 @@ process.stdin.on('data', (chunk) => {
     catch (cause) { process.stderr.write(`Invalid MCP request: ${cause.message}\n`); }
   }
 });
+
 let shuttingDown = false;
 function stopDriver() {
   if (shuttingDown) return;

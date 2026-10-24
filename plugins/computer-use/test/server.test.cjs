@@ -220,7 +220,7 @@ test('app guard uses observed active identity and only permits an observed reque
   assert.ok(observedTarget.result, JSON.stringify(observedTarget));
   assert.equal(JSON.parse(observedTarget.result.content[0].text).name, 'set_value');
   const forgedWindow = await bridge.request('tools/call', { name: 'set_value', arguments: { window_id: 999, title: 'Allowed App', value: 'safe' } });
-  assert.match(forgedWindow.error.message, /fresh, observed target window identity/);
+  assert.match(forgedWindow.error.message, /re-observe the desktop/);
   await bridge.request('tools/call', { name: 'get_window_state', arguments: { pid: 202, window_id: 2 } });
   const conflictingElementTarget = await bridge.request('tools/call', { name: 'set_value', arguments: { element_token: 's12345678:1', target: { kind: 'window', pid: 101, window_id: 1 }, value: 'safe' } });
   assert.match(conflictingElementTarget.error.message, /disagree/);
@@ -292,10 +292,14 @@ test('a failing driver call is reported and recorded in the audit log', async (t
 
   await new Promise((resolve) => setTimeout(resolve, 300));
   const lines = (await readFile(auditPath, 'utf8')).trim().split('\n').filter(Boolean).map((line) => JSON.parse(line));
-  const entry = lines.find((item) => item.action === 'click');
+  const entry = lines.find((item) => item.tool === 'click');
   assert.ok(entry, JSON.stringify(lines));
-  assert.equal(entry.ok, false);
+  assert.equal(entry.result, 'error');
   assert.equal(entry.errorCode, 'DRIVER_ERROR');
+  assert.equal(entry.tier, 'write');
+  assert.ok(entry.callId, JSON.stringify(entry));
+  assert.equal(entry.target.windowId, '1');
+  assert.equal(entry.target.pid, 101);
   assert.equal(await closeBridge(bridge), 0);
 });
 
@@ -384,6 +388,41 @@ test('a driver older than the supported minimum is refused at startup', async (t
   assert.match(failed.error.message, /0\.38\.0/);
 });
 
+test('the screenshot tool returns a cropped capture and reuses a fresh one', async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'computer-use-screenshot-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const png = encodePng({ width: 8, height: 6, pixels: Buffer.alloc(8 * 6 * 4, 120) });
+  await writeFakeConfig(directory, {
+    tools: toolCatalog,
+    scenario: {
+      get_desktop_state: {
+        result: { content: [{ type: 'image', data: png.toString('base64'), mimeType: 'image/png' }] },
+      },
+    },
+  });
+  const bridge = startBridge(driverEnv(directory, {
+    DUYA_PLUGIN_DATA: path.join(directory, 'plugin-data'),
+  }));
+  t.after(() => { if (bridge.child.exitCode === null) bridge.child.kill('SIGKILL'); });
+  await connect(bridge);
+
+  const capture = await bridge.request('tools/call', { name: 'computer_use_screenshot', arguments: { region: { x: 1, y: 1, width: 4, height: 3 } } });
+  assert.ok(capture.result, JSON.stringify(capture));
+  const image = capture.result.content.find((block) => block.type === 'image');
+  assert.ok(image, JSON.stringify(capture.result.content));
+  assert.equal(image.mimeType, 'image/png');
+  const summary = JSON.parse(capture.result.content.find((block) => block.type === 'text').text);
+  assert.equal(summary.width, 4);
+  assert.equal(summary.height, 3);
+  assert.equal(summary.cropped, true);
+  assert.equal(summary.cached, false);
+
+  const again = await bridge.request('tools/call', { name: 'computer_use_screenshot', arguments: { region: { x: 1, y: 1, width: 4, height: 3 } } });
+  const secondSummary = JSON.parse(again.result.content.find((block) => block.type === 'text').text);
+  assert.equal(secondSummary.cached, true);
+  assert.equal(await closeBridge(bridge), 0);
+});
+
 test('an element reference that no observation backs is refused', async (t) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'computer-use-stale-token-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
@@ -420,37 +459,34 @@ test('a burst of writes reuses one observation instead of recapturing the deskto
   assert.equal(await closeBridge(bridge), 0);
 });
 
-test('the screenshot tool returns a cropped capture and reuses a fresh one', async (t) => {
-  const directory = await mkdtemp(path.join(os.tmpdir(), 'computer-use-screenshot-'));
+test('an unconfigured policy denies every desktop input', async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'computer-use-default-deny-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  const png = encodePng({ width: 8, height: 6, pixels: Buffer.alloc(8 * 6 * 4, 120) });
-  await writeFakeConfig(directory, {
-    tools: toolCatalog,
-    scenario: {
-      get_desktop_state: {
-        result: { content: [{ type: 'image', data: png.toString('base64'), mimeType: 'image/png' }] },
-      },
-    },
-  });
+  const auditPath = path.join(directory, 'audit.jsonl');
+  await writeFakeConfig(directory, { tools: toolCatalog, scenario: windowScenario });
   const bridge = startBridge(driverEnv(directory, {
     DUYA_PLUGIN_DATA: path.join(directory, 'plugin-data'),
+    COMPUTER_USE_AUDIT_PATH: auditPath,
+    COMPUTER_USE_ACCESS_POLICY: '',
   }));
   t.after(() => { if (bridge.child.exitCode === null) bridge.child.kill('SIGKILL'); });
   await connect(bridge);
 
-  const capture = await bridge.request('tools/call', { name: 'computer_use_screenshot', arguments: { region: { x: 1, y: 1, width: 4, height: 3 } } });
-  assert.ok(capture.result, JSON.stringify(capture));
-  const image = capture.result.content.find((block) => block.type === 'image');
-  assert.ok(image, JSON.stringify(capture.result.content));
-  assert.equal(image.mimeType, 'image/png');
-  const summary = JSON.parse(capture.result.content.find((block) => block.type === 'text').text);
-  assert.equal(summary.width, 4);
-  assert.equal(summary.height, 3);
-  assert.equal(summary.cropped, true);
-  assert.equal(summary.cached, false);
+  const denied = await bridge.request('tools/call', { name: 'click', arguments: { x: 1, y: 2 } });
+  assert.ok(denied.error, JSON.stringify(denied));
+  assert.match(denied.error.message, /allow list|identity/i);
 
-  const again = await bridge.request('tools/call', { name: 'computer_use_screenshot', arguments: { region: { x: 1, y: 1, width: 4, height: 3 } } });
-  const secondSummary = JSON.parse(again.result.content.find((block) => block.type === 'text').text);
-  assert.equal(secondSummary.cached, true);
+  const observation = await bridge.request('tools/call', { name: 'get_desktop_state', arguments: {} });
+  assert.ok(observation.result, JSON.stringify(observation));
+
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const lines = (await readFile(auditPath, 'utf8')).trim().split('\n').filter(Boolean).map((line) => JSON.parse(line));
+  const entry = lines.find((item) => item.tool === 'click');
+  assert.ok(entry, JSON.stringify(lines));
+  assert.equal(entry.result, 'denied');
+  assert.equal(entry.policy.decision, 'deny');
+  assert.equal(entry.policy.rule, 'not-allowed');
+  assert.equal(entry.tier, 'write');
+  assert.ok(entry.callId);
   assert.equal(await closeBridge(bridge), 0);
 });
