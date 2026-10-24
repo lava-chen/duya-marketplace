@@ -8,9 +8,13 @@
       ],
       "env": {
         "CUA_DRIVER_PATH": "${setup.driverPath:-}",
+        "CUA_DRIVER_ARGS": "${setup.driverArgs:-}",
         "CUA_DRIVER_PERMISSION_MODE": "standard",
+        "COMPUTER_USE_MIN_DRIVER_VERSION": "${setup.minDriverVersion:-0.38.0}",
         "COMPUTER_USE_ACCESS_POLICY": "${setup.accessPolicyJson:-}",
         "COMPUTER_USE_AUDIT_PATH": "${setup.auditPath:-}",
+        "COMPUTER_USE_OBSERVATION_TTL_MS": "1500",
+        "COMPUTER_USE_SCREENSHOT_TTL_MS": "5000",
         "DUYA_PLUGIN_DATA": "${DUYA_PLUGIN_DATA}",
         "DISPLAY": "${DISPLAY:-}",
         "WAYLAND_DISPLAY": "${WAYLAND_DISPLAY:-}",
@@ -18,7 +22,6 @@
         "DBUS_SESSION_BUS_ADDRESS": "${DBUS_SESSION_BUS_ADDRESS:-}",
         "XDG_RUNTIME_DIR": "${XDG_RUNTIME_DIR:-}"
       },
-      "envPassthrough": "allowlist",
       "startupTimeoutSec": 30,
       "toolTimeoutSec": 60
     }
