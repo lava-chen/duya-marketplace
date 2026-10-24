@@ -307,6 +307,45 @@ test('revocation blocks write tools while read tools stay available', async (t) 
   assert.equal(await closeBridge(bridge), 0);
 });
 
+test('a refused action is recorded in the audit trail', async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'computer-use-refusal-audit-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const auditPath = path.join(directory, 'audit.jsonl');
+  await writeFakeConfig(directory, { tools: toolCatalog, screen: { width: 8, height: 6 } });
+  const bridge = startBridge(driverEnv(directory, {
+    DUYA_PLUGIN_DATA: path.join(directory, 'plugin-data'),
+    COMPUTER_USE_AUDIT_PATH: auditPath,
+    COMPUTER_USE_ACCESS_POLICY: JSON.stringify({ default_access: 'allow' }),
+  }));
+  t.after(() => { if (bridge.child.exitCode === null) bridge.child.kill('SIGKILL'); });
+  await connect(bridge);
+
+  // A coordinate action without a state never reaches the driver.
+  const unbound = await bridge.request('tools/call', { name: 'click', arguments: { x: 3, y: 3 } });
+  assert.match(unbound.error.message, /^STALE_STATE:/);
+
+  await bridge.request('tools/call', { name: 'computer_use_revoke', arguments: { duration_seconds: 60 } });
+  const state = await observe(bridge);
+  const denied = await bridge.request('tools/call', { name: 'click', arguments: { x: 3, y: 3, state_id: state.state_id } });
+  assert.match(denied.error.message, /^POLICY_DENIED:/);
+
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const lines = (await readFile(auditPath, 'utf8')).trim().split('\n').filter(Boolean).map((line) => JSON.parse(line));
+  const refusals = lines.filter((item) => item.tool === 'click' && item.result === 'error');
+  assert.equal(refusals.length, 2, JSON.stringify(lines));
+  const stale = refusals.find((item) => item.code === 'STALE_STATE');
+  assert.ok(stale, JSON.stringify(refusals));
+  assert.equal(stale.outcome, 'not_delivered');
+  assert.equal(stale.actionSent, false);
+  assert.equal(stale.policy.decision, 'deny');
+  const revoked = refusals.find((item) => item.code === 'POLICY_DENIED');
+  assert.ok(revoked, JSON.stringify(refusals));
+  assert.equal(revoked.policy.rule, 'revoked');
+  assert.equal(revoked.outcome, 'not_delivered');
+  assert.equal(revoked.stateId, state.state_id);
+  assert.equal(await closeBridge(bridge), 0);
+});
+
 test('an unwritable audit log degrades instead of failing the tool call', async (t) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'computer-use-audit-failure-'));
   t.after(() => rm(directory, { recursive: true, force: true }));

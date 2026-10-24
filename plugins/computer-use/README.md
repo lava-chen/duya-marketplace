@@ -175,6 +175,8 @@ operating system's privacy settings.
 Every call is recorded as one JSON line with the call identifier, tool, tier, `state_id`,
 generation, target identity, result, outcome, `action_sent`, dispatch status, error code, retry
 hint, policy conclusion, duration and the redacted arguments. Typed text and values are redacted.
+A refusal is recorded the same way: it carries the rule that produced it, the error code and
+`outcome: "not_delivered"`, because the action never reached the driver.
 The log rotates at 5 MB and keeps three generations.
 When the log cannot be written the plugin degrades to an in-memory trail and reports the failure on
 stderr; the tool call it describes still completes. **Computer Use audit log path** sets the

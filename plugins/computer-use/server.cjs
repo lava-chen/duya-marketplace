@@ -16,7 +16,7 @@ const { randomUUID } = require('node:crypto');
 const { createDriverClient } = require('./driver-client.cjs');
 const { evaluateWriteCall, parsePolicy, toolTier, writeTools } = require('./policy.cjs');
 const { createAuditor, defaultAuditPath } = require('./audit.cjs');
-const { ComputerUseError, codeFromDriverMessage, receiptFrom } = require('./errors.cjs');
+const { ComputerUseError, RETRY_BY_CODE, codeFromDriverMessage, receiptFrom } = require('./errors.cjs');
 const { parseDriverObservation } = require('./identity.cjs');
 const { createObservationStore } = require('./observation.cjs');
 const { parseDisplayMetrics } = require('./geometry.cjs');
@@ -190,6 +190,24 @@ async function recordAudit(entry) {
   catch (cause) { process.stderr.write(`Computer Use audit write failed: ${cause.message}\n`); }
 }
 
+function failureCode(cause) {
+  return cause instanceof ComputerUseError ? cause.code : codeFromDriverMessage(cause.message);
+}
+
+function failureRetry(cause, code) {
+  return cause instanceof ComputerUseError ? cause.retry : (RETRY_BY_CODE[code] || 'retry');
+}
+
+// The policy column of the audit trail: what the funnel decided and why.
+// A refusal that never reached the driver is a denial; a call the driver
+// answered badly passed the policy and failed later.
+function policyConclusion({ tool, dispatched, failure }) {
+  if (!writeTools.has(tool)) return null;
+  if (dispatched) return { decision: 'allow', rule: 'allowed', reason: null };
+  const rule = failure.rule || String(failure.code).toLowerCase().replace(/_/g, '-');
+  return { decision: 'deny', rule, reason: failure.message };
+}
+
 // Refresh the desktop observation when the cached one is too old. The
 // observation is reused inside its lifetime, so a burst of writes does not
 // capture the whole screen again.
@@ -298,9 +316,8 @@ async function observe(name, args) {
   return { result: enrichObservation(result, state), state };
 }
 
-async function callDriverTool(name, args) {
+async function callDriverTool(name, args, callId = randomUUID()) {
   const startedAt = Date.now();
-  const callId = randomUUID();
   const tier = toolTier(name);
   if (!allowed.has(name) || !driver.tools.has(name)) {
     throw new ComputerUseError('INVALID_REQUEST', `Computer Use tool unavailable: ${name}`);
@@ -309,31 +326,35 @@ async function callDriverTool(name, args) {
   let target = null;
   let generation = null;
   let stateId = null;
-
-  if (writeTools.has(name)) {
-    if (session.isStopped()) {
-      throw new ComputerUseError('CONTROL_STOPPED', 'This Computer Use session was stopped; observe again to start a new one.');
-    }
-    const lease = await session.acquireLease();
-    if (!lease.ok) {
-      throw new ComputerUseError('CONTROL_BUSY', `Another Computer Use session already controls the desktop (pid ${lease.owner}).`, { owner: lease.owner });
-    }
-    const revocation = await getRevocation();
-    if (revocation.revoked) {
-      throw new ComputerUseError('POLICY_DENIED', 'Computer Use is revoked. Ask the user before resuming.', { rule: 'revoked' });
-    }
-    policy = getPolicy();
-    const bound = await bindAction(name, args);
-    target = bound.target;
-    generation = bound.generation;
-    stateId = bound.state?.state_id || null;
-    const verdict = evaluateWriteCall({ policy, revoked: false, target, tool: name, args });
-    if (!verdict.allowed) {
-      throw new ComputerUseError('POLICY_DENIED', verdict.reason, { rule: verdict.rule, stateId });
-    }
-  }
+  // A refusal that happens before the driver is reached never lands an
+  // action, so it is recorded as not delivered rather than as unknown.
+  let dispatched = false;
 
   try {
+    if (writeTools.has(name)) {
+      if (session.isStopped()) {
+        throw new ComputerUseError('CONTROL_STOPPED', 'This Computer Use session was stopped; observe again to start a new one.');
+      }
+      const lease = await session.acquireLease();
+      if (!lease.ok) {
+        throw new ComputerUseError('CONTROL_BUSY', `Another Computer Use session already controls the desktop (pid ${lease.owner}).`, { owner: lease.owner });
+      }
+      const revocation = await getRevocation();
+      if (revocation.revoked) {
+        throw new ComputerUseError('POLICY_DENIED', 'Computer Use is revoked. Ask the user before resuming.', { rule: 'revoked' });
+      }
+      policy = getPolicy();
+      const bound = await bindAction(name, args);
+      target = bound.target;
+      generation = bound.generation;
+      stateId = bound.state?.state_id || null;
+      const verdict = evaluateWriteCall({ policy, revoked: false, target, tool: name, args });
+      if (!verdict.allowed) {
+        throw new ComputerUseError('POLICY_DENIED', verdict.reason, { rule: verdict.rule, stateId });
+      }
+    }
+
+    dispatched = true;
     const result = await driver.call('tools/call', { name, arguments: args });
     const receipt = receiptFrom(result);
     const summary = receiptSummary(receipt, {
@@ -362,9 +383,9 @@ async function callDriverTool(name, args) {
     return { result: { ...result, structuredContent: { ...structured, ...summary } } };
   } catch (cause) {
     const receipt = receiptFrom(cause.result);
-    const code = cause instanceof ComputerUseError ? cause.code : codeFromDriverMessage(cause.message);
-    const actionSent = receipt.actionSent === undefined ? null : receipt.actionSent;
-    const outcome = actionSent === false ? 'not_delivered' : 'unknown';
+    const code = failureCode(cause);
+    const actionSent = dispatched ? (receipt.actionSent === undefined ? null : receipt.actionSent) : false;
+    const outcome = dispatched ? (actionSent === false ? 'not_delivered' : 'unknown') : 'not_delivered';
     const failure = cause instanceof ComputerUseError
       ? cause
       : new ComputerUseError(code, cause.message || String(cause), {
@@ -373,24 +394,30 @@ async function callDriverTool(name, args) {
         dispatchStatus: receipt.dispatchStatus ?? null,
         stateId,
       });
+    failure.outcome = outcome;
+    failure.actionSent = actionSent;
     await recordAudit({
       callId,
       tool: name,
       tier,
       generation,
-      stateId,
+      // A refusal never reached the driver, so the bound state is still the
+      // one the caller named: keep it for the forensics.
+      stateId: stateId ?? (typeof args.state_id === 'string' ? args.state_id : null),
       target,
       result: 'error',
       outcome: failure.outcome,
       actionSent: failure.actionSent,
-      dispatchStatus: failure.dispatchStatus,
+      dispatchStatus: failure.dispatchStatus ?? receipt.dispatchStatus ?? null,
       code: failure.code,
       retry: failure.retry,
-      policy: policy ? { decision: 'allow', rule: 'allowed', reason: null } : null,
+      policy: policyConclusion({ tool: name, dispatched, failure }),
       errorCode: failure.code,
       durationMs: Date.now() - startedAt,
       args,
     });
+    // The refusal is already in the trail; the caller must not record it twice.
+    failure.audited = true;
     throw failure;
   }
 }
@@ -450,64 +477,108 @@ async function handle(message) {
     }
     if (message.method === 'tools/call') {
       const name = message.params?.name;
-      let args = message.params?.arguments || {};
-      if (name === 'computer_use_status') return reply(message.id, { content: [{ type: 'text', text: JSON.stringify(await getRevocation()) }] });
-      if (name === 'computer_use_revoke') {
-        const seconds = Math.max(1, Math.min(3600, Number(args.duration_seconds) || 120));
-        const revokedUntil = await revokeFor(seconds);
-        await recordAudit({ callId: randomUUID(), tool: name, tier: toolTier(name), result: 'allowed', args: { duration_seconds: seconds } });
-        return reply(message.id, { content: [{ type: 'text', text: JSON.stringify({ revoked: true, revokedUntil, duration_seconds: seconds }) }] });
+      const args = message.params?.arguments || {};
+      const callId = randomUUID();
+      try {
+        return await dispatchTool({ id: message.id, name, args, callId });
+      } catch (cause) {
+        // A call that never produced a result still belongs in the trail.
+        if (!cause.audited) {
+          const code = failureCode(cause);
+          await recordAudit({
+            callId,
+            tool: name,
+            tier: toolTier(name),
+            result: 'error',
+            outcome: 'not_delivered',
+            actionSent: false,
+            dispatchStatus: null,
+            code,
+            retry: failureRetry(cause, code),
+            policy: null,
+            errorCode: code,
+            args,
+          });
+        }
+        throw cause;
       }
-      if (name === 'computer_use_stop') {
-        const stopped = session.stop(typeof args.reason === 'string' ? args.reason : null);
-        await session.releaseLease();
-        await recordAudit({ callId: randomUUID(), tool: name, tier: toolTier(name), result: 'allowed', args: { reason: stopped.reason } });
-        return reply(message.id, { content: [{ type: 'text', text: JSON.stringify(stopped) }] });
-      }
-      if (name === 'computer_use_screenshot') {
-        const { capture, state } = await captureScreenshot(args);
-        const summary = {
-          width: capture.width,
-          height: capture.height,
-          cropped: capture.cropped,
-          cached: capture.cached,
-          ageMs: capture.ageMs,
-          capturedAt: new Date(capture.capturedAt).toISOString(),
-          ...(state ? stateSummary(state) : {}),
-        };
-        return reply(message.id, {
-          content: [
-            { type: 'image', data: capture.data, mimeType: capture.mimeType },
-            { type: 'text', text: JSON.stringify(summary) },
-          ],
-          structuredContent: summary,
-        });
-      }
-      if (observing.has(name)) {
-        const { result, state } = await observe(name, args);
-        await recordAudit({
-          callId: randomUUID(),
-          tool: name,
-          tier: toolTier(name),
-          generation: state.generation,
-          stateId: state.state_id,
-          target: state.window,
-          result: 'allowed',
-          outcome: 'delivered',
-          actionSent: null,
-          policy: null,
-          args,
-        });
-        return reply(message.id, result);
-      }
-      const { result } = await callDriverTool(name, args);
-      return reply(message.id, result);
     }
     return error(message.id, 'Method not found', -32601);
   } catch (cause) {
     if (cause instanceof ComputerUseError) return error(message.id, cause.toMessage());
     return error(message.id, cause.message || String(cause));
   }
+}
+
+async function dispatchTool({ id, name, args, callId }) {
+  if (name === 'computer_use_status') {
+    const revocation = await getRevocation();
+    await recordAudit({ callId, tool: name, tier: toolTier(name), result: 'allowed', outcome: 'delivered', actionSent: null, policy: null, args });
+    return reply(id, { content: [{ type: 'text', text: JSON.stringify(revocation) }] });
+  }
+  if (name === 'computer_use_revoke') {
+    const seconds = Math.max(1, Math.min(3600, Number(args.duration_seconds) || 120));
+    const revokedUntil = await revokeFor(seconds);
+    await recordAudit({ callId, tool: name, tier: toolTier(name), result: 'allowed', args: { duration_seconds: seconds } });
+    return reply(id, { content: [{ type: 'text', text: JSON.stringify({ revoked: true, revokedUntil, duration_seconds: seconds }) }] });
+  }
+  if (name === 'computer_use_stop') {
+    const stopped = session.stop(typeof args.reason === 'string' ? args.reason : null);
+    await session.releaseLease();
+    await recordAudit({ callId, tool: name, tier: toolTier(name), result: 'allowed', args: { reason: stopped.reason } });
+    return reply(id, { content: [{ type: 'text', text: JSON.stringify(stopped) }] });
+  }
+  if (name === 'computer_use_screenshot') {
+    const { capture, state } = await captureScreenshot(args);
+    const summary = {
+      width: capture.width,
+      height: capture.height,
+      cropped: capture.cropped,
+      cached: capture.cached,
+      ageMs: capture.ageMs,
+      capturedAt: new Date(capture.capturedAt).toISOString(),
+      ...(state ? stateSummary(state) : {}),
+    };
+    await recordAudit({
+      callId,
+      tool: name,
+      tier: toolTier(name),
+      generation: state?.generation ?? null,
+      stateId: state?.state_id ?? null,
+      target: state?.window ?? null,
+      result: 'allowed',
+      outcome: 'delivered',
+      actionSent: null,
+      policy: null,
+      args,
+    });
+    return reply(id, {
+      content: [
+        { type: 'image', data: capture.data, mimeType: capture.mimeType },
+        { type: 'text', text: JSON.stringify(summary) },
+      ],
+      structuredContent: summary,
+    });
+  }
+  if (observing.has(name)) {
+    const { result, state } = await observe(name, args);
+    await recordAudit({
+      callId,
+      tool: name,
+      tier: toolTier(name),
+      generation: state.generation,
+      stateId: state.state_id,
+      target: state.window,
+      result: 'allowed',
+      outcome: 'delivered',
+      actionSent: null,
+      policy: null,
+      args,
+    });
+    return reply(id, result);
+  }
+  const { result } = await callDriverTool(name, args, callId);
+  return reply(id, result);
 }
 
 let hostInput = '';
