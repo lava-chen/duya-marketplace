@@ -26,6 +26,10 @@ The tools below are driver-backed. The DUYA host also exposes its own
 `computer_cua` tool under different names. The two surfaces are different
 paths: use one of them per task, never both.
 
+This plugin keeps the driver's own tool names on purpose: it is a proxy in
+front of the driver, and a second vocabulary would only add a layer that can
+drift from the driver it fronts. The table below is the mapping, not a rename.
+
 | This plugin | DUYA host `computer_cua` |
 | --- | --- |
 | `click` | `left_click` |
@@ -71,6 +75,29 @@ adds:
 | `screenshot` | `{ id, width, height, mime_type }` of the capture, or `null`. `width` and `height` are the original image dimensions. |
 | `display` | `{ scale, coordinate_space, monitors }` when the driver reports display information, otherwise `null`. `coordinate_space` is `logical`, `physical` or `unknown`. |
 
+## The driver contract
+
+The plugin translates; the driver validates. The driver rejects any argument
+it does not know, so `state_id` is plugin-local and never reaches it. What
+the driver receives is its own shape:
+
+- A desktop observation becomes a screen-absolute action: the plugin sends
+  `scope: "desktop"` and no window identity.
+- A window observation becomes a window action: the plugin sends the observed
+  `pid` and `window_id`.
+- Every other argument is passed through untouched, so the driver's own
+  options stay available (`delivery_mode`, `count`, `modifier`, `capture_id`,
+  `expect`, …).
+
+The driver refuses a call inside its result rather than as a protocol error.
+The plugin turns that into the same `<CODE>: … (retry: …)` shape as any other
+failure, and a refusal is reported as `outcome: "not_delivered"`: the action
+never reached the platform.
+
+The driver delivers in the background by default, so an action does not steal
+the focus. Leave `delivery_mode` alone: the driver decides when background
+delivery is impossible and says so.
+
 ## Action receipts
 
 Action tools: `click`, `double_click`, `right_click`, `drag`, `scroll`,
@@ -106,7 +133,9 @@ The driver's content blocks are returned unchanged. `structuredContent` adds:
    never rescales coordinates. If the image was displayed smaller than its
    original size, convert back with `screenshot.width` and
    `screenshot.height` from the observation. Coordinates outside those
-   dimensions are refused (`STALE_STATE`).
+   dimensions are refused (`STALE_STATE`). A desktop capture holds screen
+   pixels and a window capture holds window-local pixels; the plugin sends
+   the matching scope, so the same numbers mean different things in the two.
 5. **Accessibility first.** Prefer an element reference over a coordinate;
    prefer `set_value` over typing. An empty element tree is not a failure —
    fall back to a screenshot and a coordinate.

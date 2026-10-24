@@ -25,7 +25,7 @@ const { createScreenshotService, inspectImage } = require('./screenshot.cjs');
 const { createSession } = require('./session.cjs');
 const { getRevocation, revokeFor } = require('./control-state.cjs');
 
-const PLUGIN_VERSION = '0.5.0';
+const PLUGIN_VERSION = '0.6.0';
 const MINIMUM_DRIVER_VERSION = '0.38.0';
 
 const allowed = new Set([

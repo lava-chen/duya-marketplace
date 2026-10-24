@@ -7,7 +7,7 @@ owns the access policy, the audit trail and the observation bookkeeping; the dri
 platform implementation: accessibility tree, screen capture, synthetic input.
 
 The plugin does not use DUYA's Computer Use Host capability, the `computer_cua` executor or the
-legacy UIA bridge, and it bundles no native binary. Plugin version: 0.5.0. Minimum supported
+legacy UIA bridge, and it bundles no native binary. Plugin version: 0.6.0. Minimum supported
 driver: 0.38.0. The agent-facing contract lives in `skills/computer-use/SKILL.md`.
 
 ## Install the driver
@@ -67,6 +67,28 @@ Four local tools belong to the plugin:
 | `computer_use_revoke` | Revoke input access for a shared timeout (default 120 s, max 3600 s). |
 | `computer_use_screenshot` | Capture the desktop or one observed window; optional `region` (`x`, `y`, `width`, `height`), optional `format`, optional `max_age_ms`, optional `refresh`. |
 | `computer_use_stop` | End this session: release the desktop lease and refuse every later write with `CONTROL_STOPPED`. |
+
+## The driver contract
+
+The plugin is a proxy in front of the Cua Driver, and the driver is strict: it rejects any argument
+it does not know and it refuses to guess a target. The plugin therefore translates rather than
+passes arguments through.
+
+- `state_id` is plugin-local and never reaches the driver.
+- A desktop observation becomes a screen-absolute action: the plugin sends `scope: "desktop"` and
+  no window identity. A window observation becomes a window action: the plugin sends the observed
+  `pid` and `window_id`.
+- Every other argument is forwarded untouched, so the driver's own options (`delivery_mode`,
+  `count`, `modifier`, `capture_id`, `expect`, …) stay available.
+- The driver refuses a call inside its result rather than as a protocol error. The plugin turns
+  that into the same `<CODE>: … (retry: …)` shape as any other failure, and a refusal is reported
+  as `outcome: "not_delivered"`, because the action never reached the platform.
+
+The tool names stay the driver's own. The plugin does not rename them: it is a proxy in front of
+the driver, and a second vocabulary would only add a layer that can drift from the driver it
+fronts. The DUYA host exposes its own `computer_cua` tool under different names; the skill
+carries the mapping and states that the two surfaces are different paths — one per task, never
+both.
 
 ## The state handle
 
@@ -199,4 +221,16 @@ npm test
 ```
 
 The suite runs on Windows, Linux and macOS: it starts the plugin against a fake driver, so no Cua
-Driver installation is required.
+Driver installation is required. The fake driver mirrors the real 0.38.0 schemas — it rejects
+unknown arguments and missing required fields, and it reports failures the way the real driver
+does — so a call that would fail against the real driver fails here too.
+
+One test runs against the real driver and is skipped unless it is pointed at one:
+
+```bash
+COMPUTER_USE_REAL_DRIVER=/path/to/cua-driver.exe npm test
+```
+
+It checks the handshake, the tool surface, a real desktop capture, the screenshot path and the
+argument translation of the write path. It never dispatches input: the one write call it makes
+carries an empty text, so the driver validates the arguments and sends nothing.
