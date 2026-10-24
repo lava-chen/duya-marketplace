@@ -47,6 +47,13 @@ test('the manifest declares the environment the server reads', () => {
   }
 });
 
+test('the skill documents every tool the plugin exposes', () => {
+  const skill = fs.readFileSync(path.join(pluginRoot, 'skills', 'computer-use', 'SKILL.md'), 'utf8');
+  for (const tool of [...readTools, ...writeTools, ...controlTools]) {
+    assert.ok(skill.includes(`\`${tool}\``), `${tool} is not documented in the skill`);
+  }
+});
+
 test('the manifest does not declare capabilities the host drops', () => {
   // The capability loader keeps command, args, env and the timeouts only.
   assert.equal(Object.hasOwn(servers.servers[0], 'envPassthrough'), false);

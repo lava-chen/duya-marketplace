@@ -63,6 +63,10 @@ function createObservationStore({ clock, ttlMs = 1500, stateTtlMs = 30_000, maxS
       generation,
       createdAt: now(),
       tool: entry.tool || null,
+      // The coordinate space the capture was taken in: 'desktop' for a
+      // full-screen capture, 'window' for a window capture. The driver needs
+      // to know which one, because the coordinates mean different things.
+      scope: entry.scope || null,
       window: target,
       snapshotId: entry.snapshotId || null,
       screenshot: entry.screenshot || null,

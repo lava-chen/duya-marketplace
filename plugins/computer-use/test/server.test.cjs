@@ -307,6 +307,98 @@ test('revocation blocks write tools while read tools stay available', async (t) 
   assert.equal(await closeBridge(bridge), 0);
 });
 
+test('the plugin never forwards its own handle to the driver', async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'computer-use-forward-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFakeConfig(directory, { tools: toolCatalog, screen: { width: 8, height: 6 } });
+  const bridge = startBridge(driverEnv(directory, {
+    DUYA_PLUGIN_DATA: path.join(directory, 'plugin-data'),
+    COMPUTER_USE_ACCESS_POLICY: JSON.stringify({ default_access: 'allow' }),
+  }));
+  t.after(() => { if (bridge.child.exitCode === null) bridge.child.kill('SIGKILL'); });
+  await connect(bridge);
+
+  const state = await observe(bridge);
+  const clicked = await bridge.request('tools/call', { name: 'click', arguments: { x: 3, y: 3, state_id: state.state_id } });
+  assert.ok(clicked.result, JSON.stringify(clicked));
+  // The driver rejects unknown arguments, so the plugin's own handle must be
+  // gone by the time the call leaves the plugin.
+  const forwarded = clicked.result.structuredContent.arguments;
+  assert.equal(forwarded.state_id, undefined, JSON.stringify(forwarded));
+  assert.equal(forwarded.x, 3);
+  assert.equal(forwarded.y, 3);
+  // A desktop capture means screen pixels, and the driver needs the scope.
+  assert.equal(forwarded.scope, 'desktop');
+  assert.equal(forwarded.pid, undefined, JSON.stringify(forwarded));
+  assert.equal(await closeBridge(bridge), 0);
+});
+
+test('a window observation binds the action to the target window', async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'computer-use-window-bind-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFakeConfig(directory, { tools: toolCatalog, screen: { width: 8, height: 6 } });
+  const bridge = startBridge(driverEnv(directory, {
+    DUYA_PLUGIN_DATA: path.join(directory, 'plugin-data'),
+    COMPUTER_USE_ACCESS_POLICY: JSON.stringify({ default_access: 'allow' }),
+  }));
+  t.after(() => { if (bridge.child.exitCode === null) bridge.child.kill('SIGKILL'); });
+  await connect(bridge);
+
+  const state = await observe(bridge, 'get_window_state', { pid: 202, window_id: 2 });
+  assert.equal(String(state.target.window_id), '2', JSON.stringify(state.target));
+  const clicked = await bridge.request('tools/call', { name: 'click', arguments: { x: 3, y: 3, state_id: state.state_id } });
+  assert.ok(clicked.result, JSON.stringify(clicked));
+  const forwarded = clicked.result.structuredContent.arguments;
+  // A window capture means window-local pixels, and the driver needs the
+  // target identity to deliver them.
+  assert.equal(forwarded.pid, 202, JSON.stringify(forwarded));
+  assert.equal(forwarded.window_id, 2, JSON.stringify(forwarded));
+  assert.equal(forwarded.scope, undefined, JSON.stringify(forwarded));
+  assert.equal(await closeBridge(bridge), 0);
+});
+
+test('a driver tool error is reported as a failure and not as delivered', async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'computer-use-tool-error-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const auditPath = path.join(directory, 'audit.jsonl');
+  await writeFakeConfig(directory, {
+    tools: toolCatalog,
+    screen: { width: 8, height: 6 },
+    scenario: {
+      click: {
+        toolError: {
+          code: 'window_target_not_found',
+          message: 'No window matches that target now.',
+          effect: 'refused',
+        },
+      },
+    },
+  });
+  const bridge = startBridge(driverEnv(directory, {
+    DUYA_PLUGIN_DATA: path.join(directory, 'plugin-data'),
+    COMPUTER_USE_AUDIT_PATH: auditPath,
+    COMPUTER_USE_ACCESS_POLICY: JSON.stringify({ default_access: 'allow' }),
+  }));
+  t.after(() => { if (bridge.child.exitCode === null) bridge.child.kill('SIGKILL'); });
+  await connect(bridge);
+
+  const state = await observe(bridge);
+  const failed = await bridge.request('tools/call', { name: 'click', arguments: { x: 3, y: 3, state_id: state.state_id } });
+  assert.ok(failed.error, JSON.stringify(failed));
+  assert.match(failed.error.message, /^STALE_STATE:/);
+  assert.match(failed.error.message, /\(retry: reobserve\)/);
+
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const lines = (await readFile(auditPath, 'utf8')).trim().split('\n').filter(Boolean).map((line) => JSON.parse(line));
+  const entry = lines.find((item) => item.tool === 'click' && item.result === 'error');
+  assert.ok(entry, JSON.stringify(lines));
+  // A refusal never reached the platform, so nothing was sent.
+  assert.equal(entry.outcome, 'not_delivered');
+  assert.equal(entry.actionSent, false);
+  assert.equal(entry.code, 'STALE_STATE');
+  assert.equal(await closeBridge(bridge), 0);
+});
+
 test('a refused action is recorded in the audit trail', async (t) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'computer-use-refusal-audit-'));
   t.after(() => rm(directory, { recursive: true, force: true }));

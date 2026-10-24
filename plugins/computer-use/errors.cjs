@@ -118,10 +118,47 @@ function receiptFrom(result) {
   return merged;
 }
 
+// The driver reports a failed tool call inside the result, not as a
+// protocol error: the result carries isError and a structured code. These
+// are the codes the real driver uses.
+const DRIVER_CODES = Object.freeze({
+  invalid_arguments: 'INVALID_REQUEST',
+  permission_denied: 'PERMISSION_DENIED',
+  window_target_not_found: 'STALE_STATE',
+  element_not_found: 'ELEMENT_UNAVAILABLE',
+  stale_snapshot: 'STALE_STATE',
+  tool_invocation_failed: 'INTERNAL',
+});
+
+// A driver call that never reached the platform is a refusal: the action was
+// not sent, so the plugin reports it as not delivered.
+const REFUSAL_CODES = new Set(['invalid_arguments', 'permission_denied', 'window_target_not_found']);
+
+// Read the failure out of a driver result. Returns null for a result that is
+// not a failure.
+function driverFailure(result) {
+  if (!result || typeof result !== 'object' || result.isError !== true) return null;
+  const body = result.structuredContent && typeof result.structuredContent === 'object' ? result.structuredContent : {};
+  const refusal = body.refusal && typeof body.refusal === 'object' ? body.refusal : null;
+  const driverCode = body.code || refusal?.code || null;
+  const text = textBlocks(result).map((block) => block.text).join(' ').trim();
+  const message = text || refusal?.message || body.detail || `The driver refused the call (${driverCode || 'unknown'}).`;
+  const refused = body.effect === 'refused' || body.status === 'refused' || REFUSAL_CODES.has(driverCode);
+  return {
+    code: (driverCode && DRIVER_CODES[driverCode]) || codeFromDriverMessage(message),
+    driverCode,
+    message,
+    refused,
+    nextCall: body.next_call || null,
+  };
+}
+
 module.exports = {
   CODES,
   ComputerUseError,
+  DRIVER_CODES,
   RETRY_BY_CODE,
   codeFromDriverMessage,
+  driverFailure,
   receiptFrom,
 };

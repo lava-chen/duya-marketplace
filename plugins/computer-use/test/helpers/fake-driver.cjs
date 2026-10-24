@@ -42,6 +42,68 @@ const ACTION_TOOLS = new Set([
   'press_key', 'hotkey', 'set_value', 'bring_to_front',
 ]);
 
+// The real driver rejects unknown arguments and reports a missing required
+// field as a tool error, not as a protocol error. The fake driver does the
+// same, so the plugin cannot pass here and then fail against the real driver.
+//
+// The accepted arguments below are the real 0.38.0 schemas, captured from
+// `cua-driver describe <tool>`.
+const TOOL_SCHEMAS = {
+  get_guide: { properties: ['session', 'topic'], required: [] },
+  check_permissions: { properties: ['prompt', 'session'], required: [] },
+  get_desktop_state: { properties: ['max_image_dimension', 'screenshot_out_file', 'session'], required: [] },
+  get_window_state: {
+    properties: ['capture_mode', 'display_only', 'full_output', 'include_accessibility_tree', 'include_screenshot', 'max_depth', 'max_dimension', 'max_elements', 'max_image_dimension', 'pid', 'query', 'screenshot_out_file', 'session', 'since', 'timeout_ms', 'tree_format', 'verbose', 'window_id'],
+    required: ['pid', 'window_id'],
+  },
+  list_windows: { properties: ['app', 'on_screen_only', 'pid', 'session'], required: [] },
+  list_apps: { properties: ['session'], required: [] },
+  get_accessibility_tree: { properties: ['session'], required: [] },
+  get_screen_size: { properties: ['session'], required: [] },
+  click: {
+    properties: ['action', 'button', 'capture_id', 'count', 'delivery_mode', 'element_token', 'from_zoom', 'modifier', 'pid', 'scope', 'session', 'target', 'window_id', 'x', 'y'],
+    required: [],
+  },
+  double_click: { properties: ['delivery_mode', 'element_token', 'from_zoom', 'modifier', 'pid', 'session', 'window_id', 'x', 'y'], required: [] },
+  right_click: { properties: ['delivery_mode', 'element_token', 'from_zoom', 'modifier', 'pid', 'session', 'window_id', 'x', 'y'], required: [] },
+  drag: {
+    properties: ['button', 'delivery_mode', 'duration_ms', 'from_x', 'from_y', 'from_zoom', 'modifier', 'pid', 'scope', 'session', 'steps', 'target', 'to_x', 'to_y', 'window_id'],
+    required: ['from_x', 'from_y', 'to_x', 'to_y'],
+  },
+  scroll: { properties: ['amount', 'by', 'delivery_mode', 'direction', 'element_token', 'pid', 'scope', 'session', 'target', 'window_id', 'x', 'y'], required: ['direction'] },
+  type_text: { properties: ['delay_ms', 'delivery_mode', 'element_token', 'pid', 'scope', 'session', 'target', 'text', 'window_id', 'x', 'y'], required: ['text'] },
+  press_key: { properties: ['delivery_mode', 'element_token', 'key', 'modifiers', 'pid', 'scope', 'session', 'target', 'window_id', 'x', 'y'], required: ['key'] },
+  hotkey: { properties: ['delivery_mode', 'element_token', 'keys', 'pid', 'scope', 'session', 'target', 'window_id', 'x', 'y'], required: ['keys'] },
+  set_value: { properties: ['delivery_mode', 'element_token', 'pid', 'session', 'value', 'window_id'], required: ['value'] },
+  bring_to_front: { properties: ['pid', 'session', 'window_id'], required: ['pid'] },
+  verify_state: { properties: ['expect', 'include_screenshot', 'pid', 'session', 'stable_samples', 'timeout_ms', 'window_id'], required: ['pid', 'window_id', 'expect'] },
+};
+
+// The real driver reports a tool failure inside the result (isError) with a
+// structured code, not as a JSON-RPC error.
+function validateArgs(name, args) {
+  const schema = TOOL_SCHEMAS[name];
+  if (!schema) return null;
+  const accepted = new Set(schema.properties);
+  const unknown = Object.keys(args || {}).filter((key) => !accepted.has(key));
+  if (unknown.length) {
+    return {
+      code: 'invalid_arguments',
+      message: `${name}: unknown argument ${unknown[0]}; accepted: ${schema.properties.join(', ')}`,
+      detail: `unknown argument ${unknown[0]}`,
+    };
+  }
+  const missing = schema.required.filter((key) => args?.[key] === undefined || args?.[key] === null);
+  if (missing.length) {
+    return {
+      code: 'invalid_arguments',
+      message: `${name}: invalid arguments: missing field \`${missing[0]}\``,
+      detail: `missing field ${missing[0]}`,
+    };
+  }
+  return null;
+}
+
 function configPath() {
   const root = process.env.TEMP || process.env.TMP || os.tmpdir();
   return path.join(root, 'fake-driver-config.json');
@@ -104,6 +166,36 @@ function windows() {
   return base;
 }
 
+// The catalog carries the real 0.38.0 schemas, so the plugin sees the same
+// accepted arguments it will see against the real driver.
+function inputSchemaFor(name) {
+  const schema = TOOL_SCHEMAS[name];
+  if (!schema) return { type: 'object', properties: {} };
+  const properties = {};
+  for (const key of schema.properties) properties[key] = { type: 'string' };
+  const input = { type: 'object', properties, additionalProperties: false };
+  if (schema.required.length) input.required = schema.required;
+  return input;
+}
+
+// A tool failure as the real driver reports it: inside the result, with
+// isError and a structured code.
+function toolErrorResult(error) {
+  const detail = typeof error === 'string' ? { code: 'tool_invocation_failed', message: error } : error;
+  return {
+    content: [{ type: 'text', text: detail.message || detail.code || 'tool error' }],
+    isError: true,
+    structuredContent: {
+      code: detail.code || 'tool_invocation_failed',
+      ...(detail.detail ? { detail: detail.detail } : {}),
+      ...(detail.hint ? { hint: detail.hint } : {}),
+      ...(detail.effect ? { effect: detail.effect } : {}),
+      ...(detail.status ? { status: detail.status } : {}),
+      ...(detail.next_call ? { next_call: detail.next_call } : {}),
+    },
+  };
+}
+
 function withScreen(result) {
   const png = buildScreen();
   if (!png) return result;
@@ -153,7 +245,7 @@ function respond(request) {
         tools: tools.map((name) => ({
           name,
           description: `fake ${name}`,
-          inputSchema: { type: 'object', properties: {} },
+          inputSchema: inputSchemaFor(name),
         })),
       },
     });
@@ -172,6 +264,7 @@ function respond(request) {
       if (rule.delayMs) {
         setTimeout(() => {
           if (rule.error) send({ jsonrpc: '2.0', id, error: { code: -32000, message: rule.error, data: errorReceipt || undefined } });
+          else if (rule.toolError) send({ jsonrpc: '2.0', id, result: toolErrorResult(rule.toolError) });
           else send({ jsonrpc: '2.0', id, result: rule.result || defaultResult(name, params.arguments) });
         }, rule.delayMs);
         return;
@@ -180,7 +273,16 @@ function respond(request) {
         send({ jsonrpc: '2.0', id, error: { code: -32000, message: rule.error, data: errorReceipt || undefined } });
         return;
       }
+      if (rule.toolError) {
+        send({ jsonrpc: '2.0', id, result: toolErrorResult(rule.toolError) });
+        return;
+      }
       if (rule.result) { send({ jsonrpc: '2.0', id, result: rule.result }); return; }
+    }
+    const invalid = validateArgs(name, params.arguments);
+    if (invalid) {
+      send({ jsonrpc: '2.0', id, result: toolErrorResult(invalid) });
+      return;
     }
     if (name === 'get_desktop_state' || name === 'list_windows' || name === 'get_window_state') {
       const payload = { windows: windows(), active_window_id: 1, calls: callCount };

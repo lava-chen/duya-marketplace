@@ -16,7 +16,8 @@ const { randomUUID } = require('node:crypto');
 const { createDriverClient } = require('./driver-client.cjs');
 const { evaluateWriteCall, parsePolicy, toolTier, writeTools } = require('./policy.cjs');
 const { createAuditor, defaultAuditPath } = require('./audit.cjs');
-const { ComputerUseError, RETRY_BY_CODE, codeFromDriverMessage, receiptFrom } = require('./errors.cjs');
+const { ComputerUseError, RETRY_BY_CODE, codeFromDriverMessage, driverFailure, receiptFrom } = require('./errors.cjs');
+const { resolveWindowTarget, toDriverArguments } = require('./driver-args.cjs');
 const { parseDriverObservation } = require('./identity.cjs');
 const { createObservationStore } = require('./observation.cjs');
 const { parseDisplayMetrics } = require('./geometry.cjs');
@@ -128,6 +129,14 @@ function snapshotIdOf(result) {
   return null;
 }
 
+// The driver's own handle for the capture a reply carries. A desktop capture
+// has no element snapshot, so this is the only id it offers.
+function captureIdOf(result) {
+  const body = result?.structuredContent || {};
+  if (typeof body.capture_id === 'string' && body.capture_id) return body.capture_id;
+  return snapshotIdOf(result);
+}
+
 // The window an observation is about: the requested window for a window
 // observation, the active window for a desktop observation.
 function observedTarget(name, args, parsed, result) {
@@ -208,6 +217,15 @@ function policyConclusion({ tool, dispatched, failure }) {
   return { decision: 'deny', rule, reason: failure.message };
 }
 
+// The coordinate space an observation was taken in. The driver needs to know
+// it: screen pixels for a desktop capture, window-local pixels for a window
+// capture.
+function observationScope(tool) {
+  if (tool === 'get_desktop_state') return 'desktop';
+  if (tool === 'get_window_state') return 'window';
+  return null;
+}
+
 // Refresh the desktop observation when the cached one is too old. The
 // observation is reused inside its lifetime, so a burst of writes does not
 // capture the whole screen again.
@@ -228,6 +246,7 @@ async function ensureObservation(args = {}, name = '') {
   const snapshotId = snapshotIdOf(result);
   observations.store({
     tool: 'get_desktop_state',
+    scope: observationScope('get_desktop_state'),
     result,
     args,
     windows,
@@ -235,7 +254,7 @@ async function ensureObservation(args = {}, name = '') {
     metrics: parseDisplayMetrics(result),
     snapshotId,
     target: active,
-    screenshot: inspectImage(result, snapshotId),
+    screenshot: inspectImage(result, captureIdOf(result)),
   });
   return observations.current();
 }
@@ -298,12 +317,37 @@ async function bindAction(name, args) {
   return { state: null, target: resolved.target, generation: observation.generation };
 }
 
+// The real driver requires pid and window_id for a window read and refuses to
+// guess one of them. When the caller named only a pid, the window is looked
+// up instead of being invented.
+async function windowIdForPid(pid) {
+  const listed = await driver.call('tools/call', { name: 'list_windows', arguments: { pid } });
+  const candidates = parseDriverObservation(listed).windows.filter((window) => window.pid === pid);
+  if (candidates.length !== 1) return null;
+  const numeric = Number(candidates[0].id);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 async function observe(name, args) {
-  const result = await driver.call('tools/call', { name, arguments: args });
+  let forwarded = args;
+  if (name === 'get_window_state' && typeof args.pid === 'number' && args.window_id === undefined) {
+    const windowId = await windowIdForPid(args.pid);
+    if (windowId !== null) forwarded = { ...args, window_id: windowId };
+  }
+  const result = await driver.call('tools/call', { name, arguments: forwarded });
+  const failure = driverFailure(result);
+  if (failure) {
+    throw new ComputerUseError(failure.code, failure.message, {
+      outcome: failure.refused ? 'not_delivered' : 'unknown',
+      actionSent: failure.refused ? false : null,
+      dispatchStatus: null,
+    });
+  }
   const parsed = parseDriverObservation(result);
   const snapshotId = snapshotIdOf(result);
   const state = observations.store({
     tool: name,
+    scope: observationScope(name),
     result,
     args,
     windows: parsed.windows,
@@ -311,7 +355,7 @@ async function observe(name, args) {
     metrics: parseDisplayMetrics(result),
     snapshotId,
     target: observedTarget(name, args, parsed, result),
-    screenshot: inspectImage(result, snapshotId),
+    screenshot: inspectImage(result, captureIdOf(result)),
   });
   return { result: enrichObservation(result, state), state };
 }
@@ -326,6 +370,7 @@ async function callDriverTool(name, args, callId = randomUUID()) {
   let target = null;
   let generation = null;
   let stateId = null;
+  let boundState = null;
   // A refusal that happens before the driver is reached never lands an
   // action, so it is recorded as not delivered rather than as unknown.
   let dispatched = false;
@@ -347,6 +392,7 @@ async function callDriverTool(name, args, callId = randomUUID()) {
       const bound = await bindAction(name, args);
       target = bound.target;
       generation = bound.generation;
+      boundState = bound.state || null;
       stateId = bound.state?.state_id || null;
       const verdict = evaluateWriteCall({ policy, revoked: false, target, tool: name, args });
       if (!verdict.allowed) {
@@ -355,7 +401,28 @@ async function callDriverTool(name, args, callId = randomUUID()) {
     }
 
     dispatched = true;
-    const result = await driver.call('tools/call', { name, arguments: args });
+    // The plugin's own vocabulary never reaches the driver: it rejects
+    // unknown arguments. What the driver gets is its own shape, with the
+    // target identity and the coordinate scope taken from the observation.
+    const forwarded = toDriverArguments({
+      args,
+      state: boundState,
+      schema: driver.tools.get(name)?.inputSchema,
+    });
+    const result = await driver.call('tools/call', { name, arguments: forwarded });
+    const failure = driverFailure(result);
+    if (failure) {
+      const error = new ComputerUseError(failure.code, failure.message, {
+        outcome: failure.refused ? 'not_delivered' : 'unknown',
+        actionSent: failure.refused ? false : null,
+        dispatchStatus: receiptFrom(result).dispatchStatus ?? null,
+        stateId,
+      });
+      error.refused = failure.refused;
+      error.driverCode = failure.driverCode;
+      error.nextCall = failure.nextCall;
+      throw error;
+    }
     const receipt = receiptFrom(result);
     const summary = receiptSummary(receipt, {
       stateId,
@@ -384,8 +451,10 @@ async function callDriverTool(name, args, callId = randomUUID()) {
   } catch (cause) {
     const receipt = receiptFrom(cause.result);
     const code = failureCode(cause);
-    const actionSent = dispatched ? (receipt.actionSent === undefined ? null : receipt.actionSent) : false;
-    const outcome = dispatched ? (actionSent === false ? 'not_delivered' : 'unknown') : 'not_delivered';
+    // A refusal never reached the platform, so the action was not sent.
+    const refused = cause.refused === true || dispatched === false;
+    const actionSent = refused ? false : (receipt.actionSent === undefined ? null : receipt.actionSent);
+    const outcome = refused ? 'not_delivered' : (actionSent === false ? 'not_delivered' : 'unknown');
     const failure = cause instanceof ComputerUseError
       ? cause
       : new ComputerUseError(code, cause.message || String(cause), {
@@ -434,11 +503,29 @@ async function captureScreenshot(args = {}) {
   if (cached) {
     return { capture: cached, state: null, cached: true };
   }
-  const result = await driver.call('tools/call', { name: tool, arguments: target });
+  // A window capture needs both identities: the driver refuses to guess one.
+  let forwarded = { ...target };
+  if (tool === 'get_window_state') {
+    if (forwarded.window_id === null || forwarded.window_id === undefined) {
+      const resolved = pid !== null ? await windowIdForPid(pid) : null;
+      if (resolved !== null) forwarded.window_id = resolved;
+    }
+    forwarded = resolveWindowTarget({ args: forwarded, windows: observations.current()?.windows || [] });
+    if (forwarded.window_id === null || forwarded.window_id === undefined) delete forwarded.window_id;
+  }
+  const result = await driver.call('tools/call', { name: tool, arguments: forwarded });
+  const failure = driverFailure(result);
+  if (failure) {
+    throw new ComputerUseError(failure.code, failure.message, {
+      outcome: failure.refused ? 'not_delivered' : 'unknown',
+      actionSent: failure.refused ? false : null,
+    });
+  }
   const parsed = parseDriverObservation(result);
   const snapshotId = snapshotIdOf(result);
   const state = observations.store({
     tool,
+    scope: observationScope(tool),
     result,
     args: target,
     windows: parsed.windows,
@@ -446,7 +533,7 @@ async function captureScreenshot(args = {}) {
     metrics: parseDisplayMetrics(result),
     snapshotId,
     target: observedTarget(tool, target, parsed, result),
-    screenshot: inspectImage(result, snapshotId),
+    screenshot: inspectImage(result, captureIdOf(result)),
   });
   const capture = await screenshots.capture({ result, key, region: args.region || null, format: args.format || null, maxAgeMs, refresh: args.refresh === true });
   return { capture, state, cached: false };
