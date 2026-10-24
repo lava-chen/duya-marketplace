@@ -12,6 +12,7 @@ const { audit } = require('./audit.cjs');
 const { parseDriverObservation } = require('./identity.cjs');
 const { createObservationStore } = require('./observation.cjs');
 const { parseDisplayMetrics, toDriverCoordinates } = require('./geometry.cjs');
+const { createScreenshotService } = require('./screenshot.cjs');
 const { getRevocation, revokeFor } = require('./control-state.cjs');
 
 // An explicit path makes managed installs predictable; otherwise let the OS
@@ -37,6 +38,21 @@ const allowed = new Set([
 const localTools = [
   { name: 'computer_use_revoke', description: 'Revoke Computer Use input access until the shared timeout expires.', inputSchema: { type: 'object', properties: { duration_seconds: { type: 'integer', minimum: 1, maximum: 3600 } } } },
   { name: 'computer_use_status', description: 'Show whether Computer Use input access is currently revoked.', inputSchema: { type: 'object', properties: {} } },
+  {
+    name: 'computer_use_screenshot',
+    description: 'Capture the desktop or one observed window, optionally cropped, with an explicit freshness window.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        window_id: { type: 'string' },
+        pid: { type: 'integer' },
+        region: { type: 'object', properties: { x: { type: 'integer' }, y: { type: 'integer' }, width: { type: 'integer' }, height: { type: 'integer' } } },
+        format: { type: 'string', enum: ['png', 'jpeg'] },
+        max_age_ms: { type: 'integer', minimum: 0 },
+        refresh: { type: 'boolean' },
+      },
+    },
+  },
 ];
 function getPolicy() {
   try { return parsePolicy(process.env.COMPUTER_USE_ACCESS_POLICY); }
@@ -50,6 +66,7 @@ function envNumber(name, fallback) {
   return Number.isFinite(value) && value >= 0 ? value : fallback;
 }
 const observationTtlMs = envNumber('COMPUTER_USE_OBSERVATION_TTL_MS', 1500);
+const screenshotTtlMs = envNumber('COMPUTER_USE_SCREENSHOT_TTL_MS', 5000);
 
 function requestsWindow(args = {}) {
   const target = args.target && typeof args.target === 'object' ? args.target : {};
@@ -75,6 +92,27 @@ const driver = createDriverClient({
   logger: { warn: (message) => process.stderr.write(`${message}\n`), debug: () => {} },
 });
 const observations = createObservationStore({ ttlMs: observationTtlMs, snapshotTtlMs: 30_000 });
+const screenshots = createScreenshotService({ ttlMs: screenshotTtlMs });
+
+// The plugin does not capture the screen itself: the driver returns the image
+// with the observation. This adds the crop, the format and the freshness
+// contract, plus a cache so a repeated capture does not hit the driver again.
+async function captureScreenshot(args = {}) {
+  const windowId = args.window_id ?? args.windowId ?? null;
+  const pid = typeof args.pid === 'number' ? args.pid : null;
+  const target = windowId !== null || pid !== null ? { window_id: windowId, pid } : {};
+  const tool = windowId !== null || pid !== null ? 'get_window_state' : 'get_desktop_state';
+  const result = await driver.call('tools/call', { name: tool, arguments: target });
+  recordObservation(tool, target, result);
+  return screenshots.capture({
+    result,
+    key: `${tool}:${windowId ?? 'desktop'}:${pid ?? ''}`,
+    region: args.region || null,
+    format: args.format || null,
+    maxAgeMs: Number.isFinite(Number(args.max_age_ms)) ? Number(args.max_age_ms) : screenshotTtlMs,
+    refresh: args.refresh === true,
+  });
+}
 
 // Refresh the desktop observation when the cached one is too old. The
 // observation is reused inside its lifetime, so a burst of writes does not
@@ -182,6 +220,24 @@ async function handle(message) {
         const revokedUntil = await revokeFor(seconds);
         await audit({ action: name, ok: true, args: { duration_seconds: seconds } }).catch(() => {});
         return reply({ content: [{ type: 'text', text: JSON.stringify({ revoked: true, revokedUntil, duration_seconds: seconds }) }] });
+      }
+      if (name === 'computer_use_screenshot') {
+        const capture = await captureScreenshot(args);
+        const summary = {
+          width: capture.width,
+          height: capture.height,
+          cropped: capture.cropped,
+          cached: capture.cached,
+          ageMs: capture.ageMs,
+          capturedAt: new Date(capture.capturedAt).toISOString(),
+        };
+        return reply({
+          content: [
+            { type: 'image', data: capture.data, mimeType: capture.mimeType },
+            { type: 'text', text: JSON.stringify(summary) },
+          ],
+          structuredContent: summary,
+        });
       }
       if (!allowed.has(name) || !driver.tools.has(name)) throw new Error(`Computer Use tool unavailable: ${name}`);
       const startedAt = Date.now();

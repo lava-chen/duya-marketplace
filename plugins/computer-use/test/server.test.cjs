@@ -7,6 +7,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { test } = require('node:test');
+const { encodePng } = require('../png.cjs');
 
 const pluginRoot = path.resolve(__dirname, '..');
 const server = path.join(pluginRoot, 'server.cjs');
@@ -138,7 +139,7 @@ test('uses the configured driver, filters tools, and limits the child environmen
 
   await connect(bridge);
   const catalog = await bridge.request('tools/list');
-  assert.deepEqual(catalog.result.tools.map((tool) => tool.name), [...toolCatalog, 'computer_use_revoke', 'computer_use_status']);
+  assert.deepEqual(catalog.result.tools.map((tool) => tool.name), [...toolCatalog, 'computer_use_revoke', 'computer_use_status', 'computer_use_screenshot']);
 
   const result = await bridge.request('tools/call', { name: 'get_guide', arguments: { topic: 'permissions' } });
   const payload = JSON.parse(result.result.content[0].text);
@@ -175,7 +176,7 @@ test('discovers the driver from PATH when the setup path is empty', async (t) =>
 
   await connect(bridge);
   const catalog = await bridge.request('tools/list');
-  assert.deepEqual(catalog.result.tools.map((tool) => tool.name), [...toolCatalog, 'computer_use_revoke', 'computer_use_status']);
+  assert.deepEqual(catalog.result.tools.map((tool) => tool.name), [...toolCatalog, 'computer_use_revoke', 'computer_use_status', 'computer_use_screenshot']);
   assert.equal(await closeBridge(bridge), 0);
 });
 
@@ -416,5 +417,40 @@ test('a burst of writes reuses one observation instead of recapturing the deskto
     const write = await bridge.request('tools/call', { name: 'set_value', arguments: { window_id: 2, value: `value-${index}` } });
     assert.ok(write.result, JSON.stringify(write));
   }
+  assert.equal(await closeBridge(bridge), 0);
+});
+
+test('the screenshot tool returns a cropped capture and reuses a fresh one', async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'computer-use-screenshot-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const png = encodePng({ width: 8, height: 6, pixels: Buffer.alloc(8 * 6 * 4, 120) });
+  await writeFakeConfig(directory, {
+    tools: toolCatalog,
+    scenario: {
+      get_desktop_state: {
+        result: { content: [{ type: 'image', data: png.toString('base64'), mimeType: 'image/png' }] },
+      },
+    },
+  });
+  const bridge = startBridge(driverEnv(directory, {
+    DUYA_PLUGIN_DATA: path.join(directory, 'plugin-data'),
+  }));
+  t.after(() => { if (bridge.child.exitCode === null) bridge.child.kill('SIGKILL'); });
+  await connect(bridge);
+
+  const capture = await bridge.request('tools/call', { name: 'computer_use_screenshot', arguments: { region: { x: 1, y: 1, width: 4, height: 3 } } });
+  assert.ok(capture.result, JSON.stringify(capture));
+  const image = capture.result.content.find((block) => block.type === 'image');
+  assert.ok(image, JSON.stringify(capture.result.content));
+  assert.equal(image.mimeType, 'image/png');
+  const summary = JSON.parse(capture.result.content.find((block) => block.type === 'text').text);
+  assert.equal(summary.width, 4);
+  assert.equal(summary.height, 3);
+  assert.equal(summary.cropped, true);
+  assert.equal(summary.cached, false);
+
+  const again = await bridge.request('tools/call', { name: 'computer_use_screenshot', arguments: { region: { x: 1, y: 1, width: 4, height: 3 } } });
+  const secondSummary = JSON.parse(again.result.content.find((block) => block.type === 'text').text);
+  assert.equal(secondSummary.cached, true);
   assert.equal(await closeBridge(bridge), 0);
 });
