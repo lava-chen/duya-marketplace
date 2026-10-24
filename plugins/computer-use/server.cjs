@@ -14,6 +14,16 @@ const tokenWindows = new Map();
 // resolve the official executable from PATH.
 const configuredDriverPath = process.env.CUA_DRIVER_PATH?.trim();
 const driverPath = configuredDriverPath || (process.platform === 'win32' ? 'cua-driver.exe' : 'cua-driver');
+// Extra arguments are optional; the default launches the driver's MCP mode.
+const configuredDriverArgs = process.env.CUA_DRIVER_ARGS?.trim();
+function driverArgs() {
+  if (!configuredDriverArgs) return ['mcp'];
+  try {
+    const parsed = JSON.parse(configuredDriverArgs);
+    if (Array.isArray(parsed) && parsed.every((value) => typeof value === 'string')) return parsed;
+  } catch {}
+  return ['mcp'];
+}
 const allowed = new Set([
   'get_guide', 'check_permissions', 'get_desktop_state', 'get_window_state',
   'list_windows', 'list_apps', 'get_accessibility_tree', 'get_screen_size',
@@ -102,7 +112,7 @@ for (const name of [
 ]) {
   if (process.env[name] !== undefined) driverEnv[name] = process.env[name];
 }
-const driver = spawn(driverPath, ['mcp'], {
+const driver = spawn(driverPath, driverArgs(), {
   stdio: ['pipe', 'pipe', 'pipe'],
   windowsHide: true,
   shell: false,
