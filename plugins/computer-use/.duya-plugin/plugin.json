@@ -1,7 +1,7 @@
 {
   "name": "computer-use",
   "id": "com.duya.computer-use",
-  "version": "0.3.0",
+  "version": "0.6.0",
   "description": "Control the local desktop through the official Cua Driver MCP server.",
   "author": {
     "name": "DUYA Team",
@@ -27,6 +27,18 @@
       "id": "driverPath",
       "label": "Cua Driver executable path",
       "type": "path",
+      "required": false
+    },
+    {
+      "id": "driverArgs",
+      "label": "Extra driver arguments (JSON array, optional)",
+      "type": "text",
+      "required": false
+    },
+    {
+      "id": "minDriverVersion",
+      "label": "Minimum Cua Driver version",
+      "type": "text",
       "required": false
     },
     {
