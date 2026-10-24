@@ -338,3 +338,47 @@ test('an unwritable audit log degrades instead of failing the tool call', async 
   await bridge.waitForStderr(/audit write failed/i);
   assert.equal(await closeBridge(bridge), 0);
 });
+
+test('the plugin recovers after the driver crashes mid session', async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'computer-use-crash-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFakeConfig(directory, {
+    tools: toolCatalog,
+    scenario: windowScenario,
+    exitAfterCalls: 1,
+  });
+  const bridge = startBridge(driverEnv(directory, {
+    DUYA_PLUGIN_DATA: path.join(directory, 'plugin-data'),
+    COMPUTER_USE_ACCESS_POLICY: JSON.stringify({ default_access: 'allow' }),
+  }));
+  t.after(() => { if (bridge.child.exitCode === null) bridge.child.kill('SIGKILL'); });
+  await connect(bridge);
+
+  const first = await bridge.request('tools/call', { name: 'get_desktop_state', arguments: {} });
+  assert.ok(first.result, JSON.stringify(first));
+
+  const crashed = await bridge.request('tools/call', { name: 'list_windows', arguments: {} });
+  assert.ok(crashed.error, JSON.stringify(crashed));
+  assert.match(crashed.error.message, /exited|crashed/i);
+
+  const recovered = await bridge.request('tools/call', { name: 'get_desktop_state', arguments: {} });
+  assert.ok(recovered.result, JSON.stringify(recovered));
+  assert.equal(await closeBridge(bridge), 0);
+});
+
+test('a driver older than the supported minimum is refused at startup', async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'computer-use-version-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFakeConfig(directory, { tools: toolCatalog, version: '0.30.0' });
+  const bridge = startBridge(driverEnv(directory, {
+    COMPUTER_USE_MIN_DRIVER_VERSION: '0.38.0',
+  }));
+  t.after(() => { if (bridge.child.exitCode === null) bridge.child.kill('SIGKILL'); });
+
+  const failed = await bridge.request('initialize', {
+    protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' },
+  });
+  assert.ok(failed.error, JSON.stringify(failed));
+  assert.match(failed.error.message, /0\.30\.0/);
+  assert.match(failed.error.message, /0\.38\.0/);
+});

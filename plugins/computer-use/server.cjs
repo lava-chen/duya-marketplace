@@ -3,7 +3,11 @@
 
 // This plugin owns the MCP tool boundary. A platform-native Cua Driver is a
 // subprocess, but only this reviewed desktop-tool subset reaches the agent.
-const { spawn } = require('node:child_process');
+//
+// The driver lifecycle lives in driver-client.cjs: it starts lazily, performs
+// the version handshake, answers health checks and restarts a crashed driver
+// with a backoff instead of locking the plugin for the rest of its life.
+const { createDriverClient } = require('./driver-client.cjs');
 const { checkAppAccess, parsePolicy, validateKeyCombo, validateText, writeTools } = require('./policy.cjs');
 const { audit } = require('./audit.cjs');
 const { parseDriverObservation, selectTargetWindow } = require('./identity.cjs');
@@ -76,10 +80,10 @@ async function observeTarget(name, args, policy) {
   const tokenIdentity = tokenWindow(args);
   let observation = { windows: [], active: null };
   try {
-    const result = await driverCall('tools/call', { name: 'get_desktop_state', arguments: {} });
+    const result = await driver.call('tools/call', { name: 'get_desktop_state', arguments: {} });
     observation = parseDriverObservation(result);
     if (requestedWindow || tokenIdentity || (['set_value', 'bring_to_front'].includes(name) && args.window_title)) {
-      const windows = await driverCall('tools/call', { name: 'list_windows', arguments: {} });
+      const windows = await driver.call('tools/call', { name: 'list_windows', arguments: {} });
       const listed = parseDriverObservation(windows);
       const unique = new Map([...observation.windows, ...listed.windows].map((window) => [`${window.pid ?? ''}:${window.id}:${window.title || ''}`, window]));
       observation = { windows: [...unique.values()], active: observation.active || listed.active };
@@ -112,91 +116,29 @@ for (const name of [
 ]) {
   if (process.env[name] !== undefined) driverEnv[name] = process.env[name];
 }
-const driver = spawn(driverPath, driverArgs(), {
-  stdio: ['pipe', 'pipe', 'pipe'],
-  windowsHide: true,
-  shell: false,
+const driver = createDriverClient({
+  command: driverPath,
+  args: driverArgs(),
   env: driverEnv,
+  minimumVersion: process.env.COMPUTER_USE_MIN_DRIVER_VERSION?.trim() || '0.38.0',
+  logger: { warn: (message) => process.stderr.write(`${message}\n`), debug: () => {} },
 });
-let driverInput = '';
-let hostInput = '';
-let nextId = 1;
-let started = false;
-let startPromise;
-let available = new Set();
-let driverFailure;
-const pending = new Map();
 
 function send(message) { process.stdout.write(`${JSON.stringify(message)}\n`); }
 function error(id, message, code = -32000) { return { jsonrpc: '2.0', id, error: { code, message } }; }
-function rejectPending(reason) {
-  driverFailure = reason;
-  for (const [id, item] of pending) { clearTimeout(item.timer); item.reject(new Error(reason)); pending.delete(id); }
-}
-driver.on('error', (cause) => {
-  const hint = cause.code === 'ENOENT'
-    ? 'Install the official Cua Driver and set its executable path in plugin setup, or add it to PATH.'
-    : 'Check the configured executable path and OS permissions.';
-  rejectPending(`Cua Driver could not start (${cause.message}). ${hint}`);
-});
-driver.on('exit', (code) => rejectPending(`Cua Driver exited (${code ?? 'signal'}).`));
-driver.stderr.on('data', (chunk) => process.stderr.write(chunk));
-driver.stdout.setEncoding('utf8');
-driver.stdout.on('data', (chunk) => {
-  driverInput += chunk;
-  while (true) {
-    const index = driverInput.indexOf('\n'); if (index < 0) break;
-    const line = driverInput.slice(0, index); driverInput = driverInput.slice(index + 1);
-    if (!line.trim()) continue;
-    try {
-      const message = JSON.parse(line);
-      const item = pending.get(message.id);
-      if (!item) continue;
-      pending.delete(message.id); clearTimeout(item.timer);
-      if (message.error) item.reject(new Error(message.error.message || 'Cua Driver MCP error'));
-      else item.resolve(message.result);
-    } catch (cause) { process.stderr.write(`Invalid Cua Driver MCP response: ${cause.message}\n`); }
-  }
-});
-
-function driverCall(method, params = {}, timeout = 60_000) {
-  if (driverFailure) return Promise.reject(new Error(driverFailure));
-  const id = nextId++;
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => { pending.delete(id); reject(new Error(`Cua Driver ${method} timed out.`)); }, timeout);
-    pending.set(id, { resolve, reject, timer });
-    driver.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`, (cause) => {
-      if (cause && pending.has(id)) { pending.delete(id); clearTimeout(timer); reject(cause); }
-    });
-  });
-}
-
-async function start(params) {
-  if (started) return;
-  if (!startPromise) startPromise = (async () => {
-    const result = await driverCall('initialize', params, 30_000);
-    driver.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })}\n`);
-    const catalog = await driverCall('tools/list', {}, 30_000);
-    available = new Set((catalog.tools || []).filter((tool) => allowed.has(tool.name)).map((tool) => tool.name));
-    started = true;
-    return result;
-  })();
-  return startPromise;
-}
 
 async function handle(message) {
   if (!message || message.jsonrpc !== '2.0' || message.id === undefined) return null;
   const reply = (result) => ({ jsonrpc: '2.0', id: message.id, result });
   try {
     if (message.method === 'initialize') {
-      const info = await start(message.params || {});
+      const info = await driver.start();
       return reply({ protocolVersion: info.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: 'computer_cua', version: '0.3.0' } });
     }
-    if (!started) throw new Error('Initialize the Computer Use MCP server first.');
     if (message.method === 'ping') return reply({});
     if (message.method === 'tools/list') {
-      const catalog = await driverCall('tools/list');
-      return reply({ tools: [...(catalog.tools || []).filter((tool) => allowed.has(tool.name)), ...localTools] });
+      const tools = [...driver.tools.values()].filter((tool) => allowed.has(tool.name));
+      return reply({ tools: [...tools, ...localTools] });
     }
     if (message.method === 'tools/call') {
       const name = message.params?.name;
@@ -208,7 +150,7 @@ async function handle(message) {
         await audit({ action: name, ok: true, args: { duration_seconds: seconds } }).catch(() => {});
         return reply({ content: [{ type: 'text', text: JSON.stringify({ revoked: true, revokedUntil, duration_seconds: seconds }) }] });
       }
-      if (!allowed.has(name) || !available.has(name)) throw new Error(`Computer Use tool unavailable: ${name}`);
+      if (!allowed.has(name) || !driver.tools.has(name)) throw new Error(`Computer Use tool unavailable: ${name}`);
       const startedAt = Date.now();
       if (writeTools.has(name)) {
         let denied;
@@ -231,7 +173,7 @@ async function handle(message) {
         }
       }
       try {
-        const result = await driverCall('tools/call', { name, arguments: args });
+        const result = await driver.call('tools/call', { name, arguments: args });
         if (name === 'get_window_state') rememberWindowSnapshot(args, result);
         void audit({ action: name, ok: true, durationMs: Date.now() - startedAt, args }).catch((cause) => process.stderr.write(`Computer Use audit write failed: ${cause.message}\n`));
         return reply(result);
@@ -244,6 +186,7 @@ async function handle(message) {
   } catch (cause) { return error(message.id, cause.message || String(cause)); }
 }
 
+let hostInput = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (chunk) => {
   hostInput += chunk;
@@ -259,23 +202,10 @@ let shuttingDown = false;
 function stopDriver() {
   if (shuttingDown) return;
   shuttingDown = true;
-  if (!driver.pid || driver.exitCode !== null || driver.signalCode !== null) {
-    process.exit(0);
-    return;
-  }
-  // Wait for close so the child is reaped before the adapter exits.
-  const killTimeout = setTimeout(() => driver.kill('SIGKILL'), 750);
-  const exitTimeout = setTimeout(() => process.exit(1), 1_750);
-  driver.once('close', () => {
-    clearTimeout(killTimeout);
-    clearTimeout(exitTimeout);
-    process.exit(0);
-  });
-  driver.kill('SIGTERM');
+  void driver.stop().finally(() => process.exit(0));
+  setTimeout(() => process.exit(0), 2_000).unref();
 }
 process.stdin.on('end', stopDriver);
 process.once('SIGINT', stopDriver);
 process.once('SIGTERM', stopDriver);
-process.on('exit', () => {
-  if (driver.pid && driver.exitCode === null && driver.signalCode === null) driver.kill('SIGKILL');
-});
+process.on('exit', () => { void driver.stop(); });
