@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "plugins": [
+    {
+      "name": "computer-use",
+      "path": "./plugins/computer-use",
+      "description": "Control the local desktop through the official Cua Driver MCP server.",
+      "requiredPaths": [
+        ".duya-plugin/plugin.json",
+        "server.cjs",
+        "mcp/servers.json",
+        "permissions/policy.json",
+        "skills/computer-use/SKILL.md",
+        "assets/icon.svg"
+      ],
+      "defaultEnabled": false
+    }
+  ]
+}

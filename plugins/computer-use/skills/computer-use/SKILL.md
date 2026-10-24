@@ -16,9 +16,12 @@ Use it for native desktop applications and OS-level interaction: file dialogs,
 native editors, installers, system settings. For web pages use the browser
 plugin instead.
 
-The driver is a separate installation. If it is missing, too old, or refused by
-the operating system, report the concrete error and stop. Do not substitute
-another automation path.
+The driver is a separate installation and the plugin never installs it. The
+plugin itself ships with DUYA, so the user only has to install the driver
+once (upstream installer or release archive) and point the plugin settings at
+the executable. If the driver is missing, too old, or refused by the operating
+system, report the concrete error and stop. Do not substitute another
+automation path.
 
 ## Vocabulary
 
@@ -156,6 +159,9 @@ The driver's content blocks are returned unchanged. `structuredContent` adds:
     names the reason.
 11. **The driver is a separate installation.** If the driver is missing or too
     old, report the concrete error; do not substitute another automation path.
+    A `DRIVER_UNAVAILABLE` error usually means the driver was never installed:
+    the fix is the upstream installer plus the executable path in the plugin
+    settings, not another tool.
 
 ## Errors
 

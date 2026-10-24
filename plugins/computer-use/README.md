@@ -18,6 +18,12 @@ Driver from [the upstream releases](https://github.com/trycua/cua/releases), or 
 [official installation guide](https://cua.ai/docs/cua-driver). Use the `cua-driver-rs-v0.38.0` release or
 later; the plugin speaks the MCP legacy initialize flow supported by the driver.
 
+The plugin itself ships inside the DUYA installer and is installed but switched off, because it
+drives the desktop. The driver does not ship with DUYA: it is a third-party runtime the user
+installs once, with the driver's own installer (`install.ps1` on Windows, `install.sh` on macOS and
+Linux), and then names in the plugin settings. A missing driver is reported as
+`DRIVER_UNAVAILABLE` with the same instruction.
+
 The upstream release page supplies macOS, Windows, and Linux builds, along with checksums and
 Sigstore attestations. Verify the selected artifact against the published checksum before
 installing. Current upstream release assets cover macOS Apple Silicon and Intel, Windows x64 and
