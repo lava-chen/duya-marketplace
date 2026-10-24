@@ -27,7 +27,7 @@ const writeTools = new Set(['click', 'double_click', 'right_click', 'drag', 'scr
 // Observation tools. They never change the desktop and never need consent.
 const readTools = new Set(['get_guide', 'check_permissions', 'get_desktop_state', 'get_window_state', 'list_windows', 'list_apps', 'get_accessibility_tree', 'get_screen_size', 'verify_state', 'computer_use_status', 'computer_use_screenshot']);
 // Control plane tools. They change plugin state, not the desktop.
-const controlTools = new Set(['computer_use_revoke']);
+const controlTools = new Set(['computer_use_revoke', 'computer_use_stop']);
 
 function toolTier(name) {
   if (writeTools.has(name)) return 'write';

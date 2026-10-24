@@ -118,7 +118,14 @@ function createDriverClient(options = {}) {
     state.pending.delete(message.id);
     clock.clearTimeout(item.timer);
     if (message.error) {
-      item.reject(new Error(message.error.message || 'Cua Driver MCP error'));
+      // Keep the raw error payload: the receipt (action_sent, dispatch status)
+      // often rides along with the error and decides whether the action may
+      // already have landed.
+      const failure = new Error(message.error.message || 'Cua Driver MCP error');
+      failure.result = message;
+      failure.code = message.error.code;
+      failure.data = message.error.data;
+      item.reject(failure);
       return;
     }
     item.resolve(message.result);

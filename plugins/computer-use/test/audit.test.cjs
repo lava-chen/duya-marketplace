@@ -48,6 +48,35 @@ test('a record carries the call identity, tool, target, result and policy conclu
   assert.ok(entry.ts);
 });
 
+test('a record carries the action receipt and the failure code', async (t) => {
+  const file = await tempFile(t);
+  const auditor = createAuditor({ file });
+  await auditor.record({
+    callId: 'c_5678efgh',
+    tool: 'click',
+    tier: 'write',
+    generation: 3,
+    stateId: 'st_0a1b2c3d',
+    target: { id: '2', pid: 202, title: 'Allowed App' },
+    result: 'error',
+    outcome: 'unknown',
+    actionSent: true,
+    dispatchStatus: 'possibly_sent',
+    code: 'DRIVER_TIMEOUT',
+    retry: 'retry',
+    durationMs: 4200,
+    args: { x: 10, y: 20, state_id: 'st_0a1b2c3d' },
+  });
+  const entry = JSON.parse((await readFile(file, 'utf8')).trim());
+  assert.equal(entry.stateId, 'st_0a1b2c3d');
+  assert.equal(entry.outcome, 'unknown');
+  assert.equal(entry.actionSent, true);
+  assert.equal(entry.dispatchStatus, 'possibly_sent');
+  assert.equal(entry.code, 'DRIVER_TIMEOUT');
+  assert.equal(entry.retry, 'retry');
+  assert.equal(entry.args.state_id, 'st_0a1b2c3d');
+});
+
 test('typed text is redacted in the audit trail', async (t) => {
   const file = await tempFile(t);
   const auditor = createAuditor({ file });

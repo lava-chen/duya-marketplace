@@ -77,6 +77,15 @@ function createScreenshotService({ clock = null, ttlMs = DEFAULT_TTL_MS } = {}) 
     while (cache.size > MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value);
   }
 
+  // A fresh capture for this target and region, without touching the driver.
+  function peek(key, maxAgeMs = ttlMs, region = null, format = null) {
+    const entry = cache.get(cacheKey(key, region, format));
+    if (!entry) return null;
+    const age = now() - entry.capturedAt;
+    if (age > maxAgeMs) return null;
+    return { ...entry, cached: true, ageMs: age };
+  }
+
   // `result` is the raw driver response of an observation tool.
   async function capture({ result, key = 'desktop', region = null, format = null, maxAgeMs = ttlMs, refresh = false } = {}) {
     const wantedRegion = normalizeRegion(region);
@@ -123,10 +132,30 @@ function createScreenshotService({ clock = null, ttlMs = DEFAULT_TTL_MS } = {}) 
 
   return {
     capture,
+    peek,
     extractImage,
     cached: () => cache.size,
     clear: () => cache.clear(),
   };
 }
 
-module.exports = { createScreenshotService, extractImage, normalizeRegion };
+// The capture a driver response carries, with the original image dimensions.
+// The dimensions matter: an agent reads a possibly resized picture, and the
+// coordinates it picks have to be scaled back to the original pixels.
+function inspectImage(result, id = null) {
+  const image = extractImage(result);
+  if (!image) return null;
+  const buffer = Buffer.from(image.data, 'base64');
+  let width = null;
+  let height = null;
+  if (isPng(buffer)) {
+    try {
+      const decoded = decodePng(buffer);
+      width = decoded.width;
+      height = decoded.height;
+    } catch { /* an unreadable capture still has a mime type */ }
+  }
+  return { id, width, height, mimeType: image.mimeType };
+}
+
+module.exports = { createScreenshotService, extractImage, inspectImage, normalizeRegion };

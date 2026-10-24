@@ -7,7 +7,7 @@
   ],
   "tiers": {
     "read": ["get_guide", "check_permissions", "get_desktop_state", "get_window_state", "list_windows", "list_apps", "get_accessibility_tree", "get_screen_size", "verify_state", "computer_use_status", "computer_use_screenshot"],
-    "write": ["click", "double_click", "right_click", "drag", "scroll", "type_text", "press_key", "hotkey", "set_value", "bring_to_front", "computer_use_revoke"]
+    "write": ["click", "double_click", "right_click", "drag", "scroll", "type_text", "press_key", "hotkey", "set_value", "bring_to_front", "computer_use_revoke", "computer_use_stop"]
   },
   "notes": [
     "The plugin launches the configured Cua Driver MCP process directly with the standard, promptless driver permission mode.",

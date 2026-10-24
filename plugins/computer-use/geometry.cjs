@@ -1,12 +1,11 @@
 'use strict';
 
-// Coordinate helpers for desktop observations.
+// Display metrics for desktop observations.
 //
-// The plugin never guesses a coordinate space. The driver owns the mapping
-// between agent coordinates and physical pixels, so this module only converts
-// when an observation explicitly declares both a scale factor and a logical
-// coordinate space. Everything else is passed through untouched and reported
-// as `driver-native`.
+// The plugin never guesses a coordinate space and never rescales coordinates:
+// the driver owns the mapping between the capture the agent looked at and the
+// pixels it dispatches to. This module only surfaces what the observation
+// declares, so the agent can reason about displays instead of guessing.
 
 const SCALE_KEYS = ['scale', 'scale_factor', 'scaleFactor', 'device_pixel_ratio', 'devicePixelRatio', 'zoom_factor', 'zoomFactor'];
 const DPI_KEYS = ['dpi', 'dpi_scale', 'pixel_dpi'];
@@ -176,44 +175,4 @@ function monitorArray(candidate) {
   return null;
 }
 
-function monitorFor(metrics, point) {
-  if (!metrics?.monitors?.length) return null;
-  const containing = metrics.monitors.find((monitor) => {
-    if (!monitor.size) return false;
-    return point.x >= monitor.origin.x && point.x < monitor.origin.x + monitor.size.width
-      && point.y >= monitor.origin.y && point.y < monitor.origin.y + monitor.size.height;
-  });
-  return containing || metrics.primary || null;
-}
-
-// Convert an agent supplied point into the space the driver expects.
-// Returns null when the point is not a usable coordinate pair.
-function toDriverCoordinates(point, metrics, { monitor = null } = {}) {
-  if (!isObject(point)) return null;
-  const x = numberFrom(point, ['x']);
-  const y = numberFrom(point, ['y']);
-  if (x === null || y === null) return null;
-  const space = metrics?.coordinateSpace || 'unknown';
-  const target = monitor || monitorFor(metrics, { x, y });
-  const scale = target?.scale ?? metrics?.scale ?? null;
-  if (space !== 'logical' || !scale || scale === 1) {
-    return { x, y, converted: false, space: space === 'physical' ? 'physical' : 'driver-native' };
-  }
-  // The driver reports monitor origins in its own global space, so the origin
-  // is kept and only the offset inside the monitor is scaled.
-  const origin = target?.origin || { x: 0, y: 0 };
-  const physicalOrigin = {
-    x: numberFrom(target || {}, ['physical_x', 'physicalX']) ?? origin.x,
-    y: numberFrom(target || {}, ['physical_y', 'physicalY']) ?? origin.y,
-  };
-  return {
-    x: physicalOrigin.x + Math.round((x - origin.x) * scale),
-    y: physicalOrigin.y + Math.round((y - origin.y) * scale),
-    converted: true,
-    space: 'physical',
-    scale,
-    monitor: target?.id || null,
-  };
-}
-
-module.exports = { parseDisplayMetrics, toDriverCoordinates, monitorFor };
+module.exports = { parseDisplayMetrics };

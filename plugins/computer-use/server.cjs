@@ -4,18 +4,24 @@
 // This plugin owns the MCP tool boundary. A platform-native Cua Driver is a
 // subprocess, but only this reviewed desktop-tool subset reaches the agent.
 //
-// The server is a thin adapter: the driver lifecycle lives in driver-client.cjs,
-// the access decision in policy.cjs, the observation bookkeeping in
-// observation.cjs, the capture handling in screenshot.cjs and the trail in
-// audit.cjs.
+// The engine is deliberately stateful:
+//   - every observation mints a state handle, and an action names the state it
+//     was derived from, so an action can never be applied to a screen the
+//     agent did not look at;
+//   - every action answers with a receipt, so the agent knows whether the
+//     action may already have landed;
+//   - every failure answers with a stable code and a retry hint.
+
 const { randomUUID } = require('node:crypto');
 const { createDriverClient } = require('./driver-client.cjs');
 const { evaluateWriteCall, parsePolicy, toolTier, writeTools } = require('./policy.cjs');
 const { createAuditor, defaultAuditPath } = require('./audit.cjs');
+const { ComputerUseError, codeFromDriverMessage, receiptFrom } = require('./errors.cjs');
 const { parseDriverObservation } = require('./identity.cjs');
 const { createObservationStore } = require('./observation.cjs');
-const { parseDisplayMetrics, toDriverCoordinates } = require('./geometry.cjs');
-const { createScreenshotService } = require('./screenshot.cjs');
+const { parseDisplayMetrics } = require('./geometry.cjs');
+const { createScreenshotService, inspectImage } = require('./screenshot.cjs');
+const { createSession } = require('./session.cjs');
 const { getRevocation, revokeFor } = require('./control-state.cjs');
 
 const PLUGIN_VERSION = '0.4.0';
@@ -27,9 +33,17 @@ const allowed = new Set([
   'click', 'double_click', 'right_click', 'drag', 'scroll', 'type_text',
   'press_key', 'hotkey', 'set_value', 'bring_to_front', 'verify_state',
 ]);
+// Observations that describe the screen and therefore mint a state handle.
+const observing = new Set(['get_desktop_state', 'get_window_state', 'list_windows', 'get_accessibility_tree', 'get_screen_size']);
+
+const stateParameter = {
+  type: 'string',
+  description: 'The state_id of the observation this action was derived from. Required for coordinate and element actions.',
+};
+
 const localTools = [
-  { name: 'computer_use_revoke', description: 'Revoke Computer Use input access until the shared timeout expires.', inputSchema: { type: 'object', properties: { duration_seconds: { type: 'integer', minimum: 1, maximum: 3600 } } } },
   { name: 'computer_use_status', description: 'Show whether Computer Use input access is currently revoked.', inputSchema: { type: 'object', properties: {} } },
+  { name: 'computer_use_revoke', description: 'Revoke Computer Use input access until the shared timeout expires.', inputSchema: { type: 'object', properties: { duration_seconds: { type: 'integer', minimum: 1, maximum: 3600 } } } },
   {
     name: 'computer_use_screenshot',
     description: 'Capture the desktop or one observed window, optionally cropped, with an explicit freshness window.',
@@ -45,6 +59,7 @@ const localTools = [
       },
     },
   },
+  { name: 'computer_use_stop', description: 'Release this Computer Use session and refuse every later write.', inputSchema: { type: 'object', properties: { reason: { type: 'string' } } } },
 ];
 
 function envNumber(name, fallback) {
@@ -53,6 +68,7 @@ function envNumber(name, fallback) {
 }
 
 const observationTtlMs = envNumber('COMPUTER_USE_OBSERVATION_TTL_MS', 1500);
+const stateTtlMs = envNumber('COMPUTER_USE_STATE_TTL_MS', 30_000);
 const screenshotTtlMs = envNumber('COMPUTER_USE_SCREENSHOT_TTL_MS', 5000);
 const minimumDriverVersion = process.env.COMPUTER_USE_MIN_DRIVER_VERSION?.trim() || MINIMUM_DRIVER_VERSION;
 
@@ -88,98 +104,19 @@ const driver = createDriverClient({
   minimumVersion: minimumDriverVersion,
   logger: { warn: (message) => process.stderr.write(`${message}\n`), debug: () => {} },
 });
-const observations = createObservationStore({ ttlMs: observationTtlMs, snapshotTtlMs: 30_000 });
+const observations = createObservationStore({ ttlMs: observationTtlMs, stateTtlMs });
 const screenshots = createScreenshotService({ ttlMs: screenshotTtlMs });
+const session = createSession({ dataDir: process.env.DUYA_PLUGIN_DATA || null });
 const auditor = createAuditor({ file: defaultAuditPath() });
 
 function getPolicy() {
   try { return parsePolicy(process.env.COMPUTER_USE_ACCESS_POLICY); }
-  catch (cause) { throw new Error(`Invalid Computer Use access policy: ${cause.message}`); }
+  catch (cause) { throw new ComputerUseError('INVALID_REQUEST', `Invalid Computer Use access policy: ${cause.message}`); }
 }
 
-function requestsWindow(args = {}) {
-  const target = args.target && typeof args.target === 'object' ? args.target : {};
-  const named = [args.window_id, args.windowId, args.hwnd, args.target_window_id, args.targetWindowId, target.window_id, target.windowId]
-    .some((value) => (typeof value === 'string' && value.trim()) || (typeof value === 'number' && Number.isFinite(value)));
-  return named || typeof args.element_token === 'string' || typeof args.pid === 'number';
-}
-
-// Refresh the desktop observation when the cached one is too old. The
-// observation is reused inside its lifetime so a burst of writes does not
-// capture the whole screen again.
-async function ensureObservation(args = {}, name = '') {
-  const cached = observations.snapshot();
-  if (cached && observations.isFresh()) return cached;
-  const result = await driver.call('tools/call', { name: 'get_desktop_state', arguments: {} });
-  const parsed = parseDriverObservation(result);
-  let windows = parsed.windows;
-  let active = parsed.active;
-  if (requestsWindow(args) || (['set_value', 'bring_to_front'].includes(name) && typeof args.window_title === 'string')) {
-    const listed = await driver.call('tools/call', { name: 'list_windows', arguments: {} });
-    const listParsed = parseDriverObservation(listed);
-    const unique = new Map([...windows, ...listParsed.windows].map((window) => [`${window.pid ?? ''}:${window.id}:${window.title || ''}`, window]));
-    windows = [...unique.values()];
-    active = active || listParsed.active;
-  }
-  return observations.store({
-    tool: 'get_desktop_state',
-    result,
-    args,
-    windows,
-    active,
-    metrics: parseDisplayMetrics(result),
-  });
-}
-
-// Convert agent coordinates into the space the driver expects. Nothing is
-// converted unless the observation declares a logical coordinate space.
-function applyCoordinateConversion(args = {}, metrics = null) {
-  if (!metrics || typeof args.x !== 'number' || typeof args.y !== 'number') return args;
-  const converted = toDriverCoordinates({ x: args.x, y: args.y }, metrics);
-  if (!converted || !converted.converted) return args;
-  return { ...args, x: converted.x, y: converted.y };
-}
-
-// Observation tools feed the generation counter: a desktop observation starts a
-// new generation, a window list only extends the current one, and a window
-// state registers the element reference the agent will use for a later write.
-function recordObservation(name, args, result) {
-  const parsed = parseDriverObservation(result);
-  if (name === 'get_desktop_state') {
-    observations.store({
-      tool: name,
-      result,
-      args,
-      windows: parsed.windows,
-      active: parsed.active,
-      metrics: parseDisplayMetrics(result),
-    });
-    return;
-  }
-  if (name === 'list_windows') {
-    observations.mergeWindows(parsed.windows, parsed.active);
-    return;
-  }
-  if (name === 'get_window_state') {
-    const snapshotId = snapshotIdOf(result);
-    if (!snapshotId) return;
-    const body = result?.structuredContent || {};
-    const requestedId = args.window_id ?? args.windowId ?? null;
-    const requestedPid = typeof args.pid === 'number' ? args.pid : null;
-    const observed = (observations.snapshot()?.windows || []).find((window) => (
-      (requestedId === null || window.id === String(requestedId))
-      && (requestedPid === null || window.pid === requestedPid)
-    ));
-    const fallback = {
-      id: requestedId === null ? null : String(requestedId),
-      pid: requestedPid,
-      title: body.window_title || body.title || null,
-      app: body.app_name || body.app || null,
-      processName: body.process_name || body.app_name || null,
-    };
-    observations.registerSnapshot(snapshotId, { target: observed || fallback, tool: name });
-  }
-}
+function send(message) { process.stdout.write(`${JSON.stringify(message)}\n`); }
+function error(id, message, code = -32000) { return { jsonrpc: '2.0', id, error: { code, message } }; }
+function reply(id, result) { return { jsonrpc: '2.0', id, result }; }
 
 function snapshotIdOf(result) {
   const body = result?.structuredContent || {};
@@ -191,29 +128,174 @@ function snapshotIdOf(result) {
   return null;
 }
 
+// The window an observation is about: the requested window for a window
+// observation, the active window for a desktop observation.
+function observedTarget(name, args, parsed, result) {
+  const body = result?.structuredContent || {};
+  const requestedId = args.window_id ?? args.windowId ?? null;
+  const requestedPid = typeof args.pid === 'number' ? args.pid : null;
+  if (requestedId !== null || requestedPid !== null) {
+    const match = parsed.windows.find((window) => (
+      (requestedId === null || window.id === String(requestedId))
+      && (requestedPid === null || window.pid === requestedPid)
+    ));
+    if (match) return match;
+    return {
+      id: requestedId === null ? null : String(requestedId),
+      pid: requestedPid,
+      title: body.window_title || body.title || null,
+      app: body.app_name || body.app || null,
+      processName: body.process_name || body.app_name || null,
+    };
+  }
+  return parsed.active || null;
+}
+
+function stateSummary(state) {
+  return {
+    state_id: state.state_id,
+    generation: state.generation,
+    observed_at: new Date(state.createdAt).toISOString(),
+    target: state.window
+      ? { window_id: state.window.id, pid: state.window.pid, title: state.window.title, app: state.window.app }
+      : null,
+    screenshot: state.screenshot
+      ? { id: state.screenshot.id, width: state.screenshot.width, height: state.screenshot.height, mime_type: state.screenshot.mimeType }
+      : null,
+    display: state.display
+      ? { scale: state.display.scale, coordinate_space: state.display.coordinateSpace, monitors: state.display.monitors }
+      : null,
+  };
+}
+
+function enrichObservation(result, state) {
+  const structured = result?.structuredContent && typeof result.structuredContent === 'object' ? result.structuredContent : {};
+  return { ...result, structuredContent: { ...structured, ...stateSummary(state) } };
+}
+
+function receiptSummary(receipt, extra = {}) {
+  return {
+    state_id: extra.stateId ?? null,
+    outcome: extra.outcome ?? 'delivered',
+    action_sent: extra.actionSent ?? null,
+    dispatch_status: extra.dispatchStatus ?? null,
+    code: extra.code ?? null,
+    retry: extra.retry ?? null,
+    duration_ms: extra.durationMs ?? null,
+  };
+}
+
 async function recordAudit(entry) {
   try { await auditor.record(entry); }
   catch (cause) { process.stderr.write(`Computer Use audit write failed: ${cause.message}\n`); }
 }
 
-// The plugin does not capture the screen itself: the driver returns the image
-// with the observation. This adds the crop, the format and the freshness
-// contract, plus a cache so a repeated capture does not hit the driver again.
-async function captureScreenshot(args = {}) {
-  const windowId = args.window_id ?? args.windowId ?? null;
-  const pid = typeof args.pid === 'number' ? args.pid : null;
-  const target = windowId !== null || pid !== null ? { window_id: windowId, pid } : {};
-  const tool = windowId !== null || pid !== null ? 'get_window_state' : 'get_desktop_state';
-  const result = await driver.call('tools/call', { name: tool, arguments: target });
-  recordObservation(tool, target, result);
-  return screenshots.capture({
+// Refresh the desktop observation when the cached one is too old. The
+// observation is reused inside its lifetime, so a burst of writes does not
+// capture the whole screen again.
+async function ensureObservation(args = {}, name = '') {
+  const cached = observations.current();
+  if (cached && observations.isFresh()) return cached;
+  const result = await driver.call('tools/call', { name: 'get_desktop_state', arguments: {} });
+  const parsed = parseDriverObservation(result);
+  let windows = parsed.windows;
+  let active = parsed.active;
+  if (observations.requestedIdentity(args) || typeof args.element_token === 'string' || typeof args.pid === 'number') {
+    const listed = await driver.call('tools/call', { name: 'list_windows', arguments: {} });
+    const listParsed = parseDriverObservation(listed);
+    const unique = new Map([...windows, ...listParsed.windows].map((window) => [`${window.pid ?? ''}:${window.id}:${window.title || ''}`, window]));
+    windows = [...unique.values()];
+    active = active || listParsed.active;
+  }
+  const snapshotId = snapshotIdOf(result);
+  observations.store({
+    tool: 'get_desktop_state',
     result,
-    key: `${tool}:${windowId ?? 'desktop'}:${pid ?? ''}`,
-    region: args.region || null,
-    format: args.format || null,
-    maxAgeMs: Number.isFinite(Number(args.max_age_ms)) ? Number(args.max_age_ms) : screenshotTtlMs,
-    refresh: args.refresh === true,
+    args,
+    windows,
+    active,
+    metrics: parseDisplayMetrics(result),
+    snapshotId,
+    target: active,
+    screenshot: inspectImage(result, snapshotId),
   });
+  return observations.current();
+}
+
+// Bind an action to the observation it was derived from.
+//
+// A state handle is the only thing that makes an action safe to replay: it
+// names the screen the agent looked at. Without it, a coordinate or an
+// element reference has nothing to be checked against and the action is
+// refused rather than guessed.
+async function bindAction(name, args) {
+  const stateId = typeof args.state_id === 'string' ? args.state_id.trim() : '';
+  const hasCoordinates = Number.isFinite(args.x) && Number.isFinite(args.y);
+  const elementToken = observations.parseElementToken(args.element_token);
+
+  if (stateId) {
+    const state = observations.resolveState(stateId);
+    if (!state) {
+      throw new ComputerUseError('STALE_STATE', `The observation ${stateId} is unknown, superseded or expired; observe again before acting.`, { stateId });
+    }
+    if (elementToken) {
+      if (!state.snapshotId) {
+        throw new ComputerUseError('ELEMENT_UNAVAILABLE', `The observation ${stateId} carries no element references; observe the window again.`, { stateId });
+      }
+      if (elementToken.snapshotId !== state.snapshotId) {
+        throw new ComputerUseError('STALE_STATE', `The element reference ${args.element_token} belongs to a different observation than ${stateId}; observe again.`, { stateId });
+      }
+    }
+    if (hasCoordinates && state.screenshot?.width && state.screenshot?.height) {
+      const { x, y } = args;
+      if (x < 0 || y < 0 || x >= state.screenshot.width || y >= state.screenshot.height) {
+        throw new ComputerUseError('STALE_STATE', `The point (${x}, ${y}) lies outside the ${state.screenshot.width}x${state.screenshot.height} capture of ${stateId}; observe again.`, { stateId });
+      }
+    }
+    if (!observations.windowStillObserved(state)) {
+      throw new ComputerUseError('STALE_STATE', `The window observed in ${stateId} is no longer on screen; observe again.`, { stateId });
+    }
+    const requested = observations.requestedIdentity(args);
+    if (requested && state.window?.id) {
+      const otherWindow = (requested.id !== null && requested.id !== state.window.id)
+        || (requested.pid !== null && state.window.pid !== null && requested.pid !== state.window.pid);
+      if (otherWindow) {
+        throw new ComputerUseError('STALE_STATE', `The action names a different window than the observation ${stateId}; observe that window again.`, { stateId });
+      }
+    }
+    return { state, target: state.window, generation: state.generation };
+  }
+
+  if (hasCoordinates) {
+    throw new ComputerUseError('STALE_STATE', 'Coordinate actions must carry the state_id of the observation the coordinates come from; observe again and pass it.');
+  }
+  if (elementToken) {
+    throw new ComputerUseError('STALE_STATE', `The element reference ${args.element_token} must be paired with the state_id of the observation it came from.`);
+  }
+
+  // A window level action without a state: fall back to a fresh observation.
+  const observation = await ensureObservation(args, name);
+  const resolved = observations.resolveTarget({ args, name });
+  if (resolved.error) throw new ComputerUseError('STALE_STATE', resolved.error);
+  return { state: null, target: resolved.target, generation: observation.generation };
+}
+
+async function observe(name, args) {
+  const result = await driver.call('tools/call', { name, arguments: args });
+  const parsed = parseDriverObservation(result);
+  const snapshotId = snapshotIdOf(result);
+  const state = observations.store({
+    tool: name,
+    result,
+    args,
+    windows: parsed.windows,
+    active: parsed.active,
+    metrics: parseDisplayMetrics(result),
+    snapshotId,
+    target: observedTarget(name, args, parsed, result),
+    screenshot: inspectImage(result, snapshotId),
+  });
+  return { result: enrichObservation(result, state), state };
 }
 
 async function callDriverTool(name, args) {
@@ -221,81 +303,127 @@ async function callDriverTool(name, args) {
   const callId = randomUUID();
   const tier = toolTier(name);
   if (!allowed.has(name) || !driver.tools.has(name)) {
-    throw new Error(`Computer Use tool unavailable: ${name}`);
+    throw new ComputerUseError('INVALID_REQUEST', `Computer Use tool unavailable: ${name}`);
   }
   let policy = null;
   let target = null;
   let generation = null;
+  let stateId = null;
+
   if (writeTools.has(name)) {
+    if (session.isStopped()) {
+      throw new ComputerUseError('CONTROL_STOPPED', 'This Computer Use session was stopped; observe again to start a new one.');
+    }
+    const lease = await session.acquireLease();
+    if (!lease.ok) {
+      throw new ComputerUseError('CONTROL_BUSY', `Another Computer Use session already controls the desktop (pid ${lease.owner}).`, { owner: lease.owner });
+    }
     const revocation = await getRevocation();
     if (revocation.revoked) {
-      const reason = 'Computer Use is revoked. Ask the user before resuming.';
-      await recordAudit({
-        callId, tool: name, tier, result: 'denied',
-        policy: { decision: 'deny', rule: 'revoked', reason },
-        durationMs: Date.now() - startedAt, args,
-      });
-      throw new Error(reason);
+      throw new ComputerUseError('POLICY_DENIED', 'Computer Use is revoked. Ask the user before resuming.', { rule: 'revoked' });
     }
     policy = getPolicy();
-    const observation = await ensureObservation(args, name);
-    generation = observation.generation;
-    const resolved = observations.resolveTarget({ args, name });
-    if (resolved.error) {
-      await recordAudit({
-        callId, tool: name, tier, generation, result: 'denied',
-        policy: { decision: 'deny', rule: 'no-target', reason: resolved.error },
-        durationMs: Date.now() - startedAt, args,
-      });
-      throw new Error(resolved.error);
-    }
-    target = resolved.target;
-    const verdict = evaluateWriteCall({ policy, revoked: revocation.revoked, target, tool: name, args });
+    const bound = await bindAction(name, args);
+    target = bound.target;
+    generation = bound.generation;
+    stateId = bound.state?.state_id || null;
+    const verdict = evaluateWriteCall({ policy, revoked: false, target, tool: name, args });
     if (!verdict.allowed) {
-      await recordAudit({
-        callId, tool: name, tier, generation, target, result: 'denied',
-        policy: { decision: 'deny', rule: verdict.rule, reason: verdict.reason },
-        durationMs: Date.now() - startedAt, args,
-      });
-      throw new Error(verdict.reason);
+      throw new ComputerUseError('POLICY_DENIED', verdict.reason, { rule: verdict.rule, stateId });
     }
-    args = applyCoordinateConversion(args, observation.metrics);
   }
+
   try {
     const result = await driver.call('tools/call', { name, arguments: args });
-    recordObservation(name, args, result);
+    const receipt = receiptFrom(result);
+    const summary = receiptSummary(receipt, {
+      stateId,
+      outcome: 'delivered',
+      actionSent: receipt.actionSent === undefined ? true : receipt.actionSent,
+      dispatchStatus: receipt.dispatchStatus ?? null,
+      durationMs: Date.now() - startedAt,
+    });
     await recordAudit({
       callId,
       tool: name,
       tier,
       generation,
+      stateId,
       target,
       result: 'allowed',
+      outcome: summary.outcome,
+      actionSent: summary.action_sent,
+      dispatchStatus: summary.dispatch_status,
       policy: policy ? { decision: 'allow', rule: 'allowed', reason: null } : null,
-      durationMs: Date.now() - startedAt,
+      durationMs: summary.duration_ms,
       args,
     });
-    return { result };
+    const structured = result?.structuredContent && typeof result.structuredContent === 'object' ? result.structuredContent : {};
+    return { result: { ...result, structuredContent: { ...structured, ...summary } } };
   } catch (cause) {
+    const receipt = receiptFrom(cause.result);
+    const code = cause instanceof ComputerUseError ? cause.code : codeFromDriverMessage(cause.message);
+    const actionSent = receipt.actionSent === undefined ? null : receipt.actionSent;
+    const outcome = actionSent === false ? 'not_delivered' : 'unknown';
+    const failure = cause instanceof ComputerUseError
+      ? cause
+      : new ComputerUseError(code, cause.message || String(cause), {
+        outcome,
+        actionSent,
+        dispatchStatus: receipt.dispatchStatus ?? null,
+        stateId,
+      });
     await recordAudit({
       callId,
       tool: name,
       tier,
       generation,
+      stateId,
       target,
       result: 'error',
+      outcome: failure.outcome,
+      actionSent: failure.actionSent,
+      dispatchStatus: failure.dispatchStatus,
+      code: failure.code,
+      retry: failure.retry,
       policy: policy ? { decision: 'allow', rule: 'allowed', reason: null } : null,
-      errorCode: 'DRIVER_ERROR',
+      errorCode: failure.code,
       durationMs: Date.now() - startedAt,
       args,
     });
-    throw cause;
+    throw failure;
   }
 }
 
-function send(message) { process.stdout.write(`${JSON.stringify(message)}\n`); }
-function error(id, message, code = -32000) { return { jsonrpc: '2.0', id, error: { code, message } }; }
-function reply(id, result) { return { jsonrpc: '2.0', id, result }; }
+async function captureScreenshot(args = {}) {
+  const windowId = args.window_id ?? args.windowId ?? null;
+  const pid = typeof args.pid === 'number' ? args.pid : null;
+  const target = windowId !== null || pid !== null ? { window_id: windowId, pid } : {};
+  const tool = windowId !== null || pid !== null ? 'get_window_state' : 'get_desktop_state';
+  const key = `${tool}:${windowId ?? 'desktop'}:${pid ?? ''}`;
+  const maxAgeMs = Number.isFinite(Number(args.max_age_ms)) ? Number(args.max_age_ms) : screenshotTtlMs;
+
+  const cached = screenshots.peek(key, maxAgeMs, args.region || null, args.format || null);
+  if (cached) {
+    return { capture: cached, state: null, cached: true };
+  }
+  const result = await driver.call('tools/call', { name: tool, arguments: target });
+  const parsed = parseDriverObservation(result);
+  const snapshotId = snapshotIdOf(result);
+  const state = observations.store({
+    tool,
+    result,
+    args: target,
+    windows: parsed.windows,
+    active: parsed.active,
+    metrics: parseDisplayMetrics(result),
+    snapshotId,
+    target: observedTarget(tool, target, parsed, result),
+    screenshot: inspectImage(result, snapshotId),
+  });
+  const capture = await screenshots.capture({ result, key, region: args.region || null, format: args.format || null, maxAgeMs, refresh: args.refresh === true });
+  return { capture, state, cached: false };
+}
 
 async function handle(message) {
   if (!message || message.jsonrpc !== '2.0' || message.id === undefined) return null;
@@ -310,7 +438,14 @@ async function handle(message) {
     }
     if (message.method === 'ping') return reply(message.id, {});
     if (message.method === 'tools/list') {
-      const tools = [...driver.tools.values()].filter((tool) => allowed.has(tool.name));
+      const tools = [...driver.tools.values()]
+        .filter((tool) => allowed.has(tool.name))
+        .map((tool) => {
+          if (!writeTools.has(tool.name)) return tool;
+          const schema = tool.inputSchema && typeof tool.inputSchema === 'object' ? tool.inputSchema : { type: 'object' };
+          const properties = schema.properties && typeof schema.properties === 'object' ? schema.properties : {};
+          return { ...tool, inputSchema: { ...schema, properties: { ...properties, state_id: stateParameter } } };
+        });
       return reply(message.id, { tools: [...tools, ...localTools] });
     }
     if (message.method === 'tools/call') {
@@ -323,8 +458,14 @@ async function handle(message) {
         await recordAudit({ callId: randomUUID(), tool: name, tier: toolTier(name), result: 'allowed', args: { duration_seconds: seconds } });
         return reply(message.id, { content: [{ type: 'text', text: JSON.stringify({ revoked: true, revokedUntil, duration_seconds: seconds }) }] });
       }
+      if (name === 'computer_use_stop') {
+        const stopped = session.stop(typeof args.reason === 'string' ? args.reason : null);
+        await session.releaseLease();
+        await recordAudit({ callId: randomUUID(), tool: name, tier: toolTier(name), result: 'allowed', args: { reason: stopped.reason } });
+        return reply(message.id, { content: [{ type: 'text', text: JSON.stringify(stopped) }] });
+      }
       if (name === 'computer_use_screenshot') {
-        const capture = await captureScreenshot(args);
+        const { capture, state } = await captureScreenshot(args);
         const summary = {
           width: capture.width,
           height: capture.height,
@@ -332,6 +473,7 @@ async function handle(message) {
           cached: capture.cached,
           ageMs: capture.ageMs,
           capturedAt: new Date(capture.capturedAt).toISOString(),
+          ...(state ? stateSummary(state) : {}),
         };
         return reply(message.id, {
           content: [
@@ -341,11 +483,29 @@ async function handle(message) {
           structuredContent: summary,
         });
       }
+      if (observing.has(name)) {
+        const { result, state } = await observe(name, args);
+        await recordAudit({
+          callId: randomUUID(),
+          tool: name,
+          tier: toolTier(name),
+          generation: state.generation,
+          stateId: state.state_id,
+          target: state.window,
+          result: 'allowed',
+          outcome: 'delivered',
+          actionSent: null,
+          policy: null,
+          args,
+        });
+        return reply(message.id, result);
+      }
       const { result } = await callDriverTool(name, args);
       return reply(message.id, result);
     }
     return error(message.id, 'Method not found', -32601);
   } catch (cause) {
+    if (cause instanceof ComputerUseError) return error(message.id, cause.toMessage());
     return error(message.id, cause.message || String(cause));
   }
 }
@@ -367,10 +527,11 @@ let shuttingDown = false;
 function stopDriver() {
   if (shuttingDown) return;
   shuttingDown = true;
+  void session.releaseLease();
   void driver.stop().finally(() => process.exit(0));
   setTimeout(() => process.exit(0), 2_000).unref();
 }
 process.stdin.on('end', stopDriver);
 process.once('SIGINT', stopDriver);
 process.once('SIGTERM', stopDriver);
-process.on('exit', () => { void driver.stop(); });
+process.on('exit', () => { void session.releaseLease(); void driver.stop(); });

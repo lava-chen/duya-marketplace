@@ -2,11 +2,12 @@
 
 // Observation bookkeeping for the Computer Use plugin.
 //
-// Every fresh desktop observation gets a generation number. A write tool never
-// trusts an identity that came from an older generation: an element reference
-// may only *select* a window, and the identity that the policy check runs
-// against is always re-read from the current generation.
+// Every observation produces a state handle. A state carries the identity of
+// the observed window, the capture that was taken and the generation it
+// belongs to. An action names the state it was derived from, so the plugin can
+// refuse an action that no longer matches the screen the agent looked at.
 
+const { randomUUID } = require('node:crypto');
 const { selectTargetWindow } = require('./identity.cjs');
 
 const TOKEN_PATTERN = /^([A-Za-z0-9_-]{4,64}):(\d+)$/;
@@ -23,54 +24,62 @@ function sameWindow(left, right) {
   return String(left.id) === String(right.id) && Number(left.pid) === Number(right.pid);
 }
 
-function createObservationStore({ clock, ttlMs = 1500, snapshotTtlMs = 30_000 } = {}) {
+function newStateId() {
+  return `st_${randomUUID().replace(/-/g, '').slice(0, 8)}`;
+}
+
+function createObservationStore({ clock, ttlMs = 1500, stateTtlMs = 30_000, maxStates = 64 } = {}) {
   const now = () => (clock?.now ? clock.now() : Date.now());
   let generation = 0;
   let observation = null;
-  const snapshots = new Map();
+  const states = new Map();
 
+  function pruneStates() {
+    for (const [id, state] of states) {
+      if (now() - state.createdAt > stateTtlMs) states.delete(id);
+    }
+    while (states.size > maxStates) states.delete(states.keys().next().value);
+  }
+
+  // Record a fresh observation and mint the state handle that actions bind to.
   function store(entry) {
     generation += 1;
+    const active = entry.active || null;
+    const target = entry.target
+      || (entry.windows || []).find((window) => sameWindow(window, active))
+      || null;
     observation = {
       generation,
       observedAt: now(),
       tool: entry.tool || null,
       args: entry.args || {},
       windows: entry.windows || [],
-      active: entry.active || null,
+      active,
       metrics: entry.metrics || null,
       snapshotId: entry.snapshotId || null,
     };
-    if (observation.snapshotId) registerSnapshot(observation.snapshotId, {
-      windows: observation.windows,
-      target: entry.target || null,
-      tool: observation.tool,
-    });
-    return observation;
-  }
-
-  function registerSnapshot(snapshotId, entry = {}) {    if (typeof snapshotId !== 'string' || !snapshotId) return null;
-    const record = {
-      snapshotId,
-      generation: entry.generation ?? generation,
+    const state = {
+      state_id: newStateId(),
+      generation,
       createdAt: now(),
-      windows: entry.windows || [],
-      target: entry.target || null,
       tool: entry.tool || null,
+      window: target,
+      snapshotId: entry.snapshotId || null,
+      screenshot: entry.screenshot || null,
+      display: entry.metrics || null,
     };
-    snapshots.set(snapshotId, record);
-    if (snapshots.size > 512) snapshots.delete(snapshots.keys().next().value);
-    return record;
+    states.set(state.state_id, state);
+    pruneStates();
+    return state;
   }
 
-  function lookupSnapshot(snapshotId) {
-    const record = snapshots.get(snapshotId);
-    if (!record) return null;
-    if (now() - record.createdAt > snapshotTtlMs) {
-      snapshots.delete(snapshotId);
-      return null;
-    }
-    return record;
+  // Merge extra observed windows into the current observation without
+  // advancing the generation: a window list is the same desktop state.
+  function mergeWindows(windows = [], active = null) {
+    if (!observation) return null;
+    const unique = new Map([...observation.windows, ...windows].map((window) => [`${window.pid ?? ''}:${window.id}:${window.title || ''}`, window]));
+    observation = { ...observation, windows: [...unique.values()], active: observation.active || active };
+    return observation;
   }
 
   function isFresh() {
@@ -78,49 +87,39 @@ function createObservationStore({ clock, ttlMs = 1500, snapshotTtlMs = 30_000 } 
     return now() - observation.observedAt <= ttlMs;
   }
 
+  // Resolve a state handle. An unknown or expired handle is not a state.
+  function resolveState(stateId) {
+    if (typeof stateId !== 'string' || !stateId) return null;
+    const state = states.get(stateId);
+    if (!state) return null;
+    if (now() - state.createdAt > stateTtlMs) {
+      states.delete(stateId);
+      return null;
+    }
+    return state;
+  }
+
+  // Is the window this state observed still on screen?
+  function windowStillObserved(state) {
+    if (!state?.window?.id) return true;
+    if (!observation) return false;
+    return observation.windows.some((window) => (
+      window.id === state.window.id
+      && (state.window.pid === null || state.window.pid === undefined || window.pid === state.window.pid)
+    ));
+  }
+
   // Resolve the target window of a call against the current generation.
-  // Returns `{ target, generation, token }` or `{ error, generation }`.
   function resolveTarget({ args = {}, name = '' } = {}) {
     if (!observation) {
       return { error: 'No desktop observation is available yet; call get_desktop_state first.', generation };
     }
     const token = parseElementToken(args.element_token);
-    let record = null;
     if (token) {
-      record = lookupSnapshot(token.snapshotId);
-      if (!record) {
-        return {
-          error: `Element reference ${args.element_token} is stale or unknown; re-observe the window and try again.`,
-          generation: observation.generation,
-        };
-      }
-    }
-    if (record) {
-      const requested = requestedIdentity(args);
-      if (requested && !sameWindow(requested, record.target)) {
-        return {
-          error: 'The element reference and the requested window disagree; re-observe and use a single target.',
-          generation: observation.generation,
-        };
-      }
-      if (record.target) {
-        const current = observation.windows.find((window) => sameWindow(window, record.target));
-        if (!current) {
-          return {
-            error: 'The observed target window is no longer present; re-observe the desktop and select a visible window.',
-            generation: observation.generation,
-          };
-        }
-        return {
-          target: current,
-          generation: observation.generation,
-          token: {
-            snapshotId: record.snapshotId,
-            generation: record.generation,
-            rebound: record.generation !== observation.generation,
-          },
-        };
-      }
+      return {
+        error: `Element reference ${args.element_token} is not bound to an observation; pass the state_id of the observation it came from.`,
+        generation: observation.generation,
+      };
     }
     return {
       target: selectTargetWindow(observation, args, name),
@@ -140,26 +139,17 @@ function createObservationStore({ clock, ttlMs = 1500, snapshotTtlMs = 30_000 } 
     };
   }
 
-  // Merge extra observed windows into the current observation without
-  // advancing the generation: a window list is the same desktop state.
-  function mergeWindows(windows = [], active = null) {
-    if (!observation) {
-      return store({ tool: 'list_windows', windows, active });
-    }
-    const unique = new Map([...observation.windows, ...windows].map((window) => [`${window.pid ?? ''}:${window.id}:${window.title || ''}`, window]));
-    observation = { ...observation, windows: [...unique.values()], active: observation.active || active };
-    return observation;
-  }
-
   return {
     store,
     mergeWindows,
-    registerSnapshot,
-    lookupSnapshot,
+    resolveState,
     resolveTarget,
-    snapshot: () => observation,
+    windowStillObserved,
+    requestedIdentity,
+    current: () => observation,
     isFresh,
     generation: () => generation,
+    stateCount: () => states.size,
     parseElementToken,
   };
 }
