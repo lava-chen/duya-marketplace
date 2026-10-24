@@ -4,15 +4,15 @@
 // This plugin owns the MCP tool boundary. A platform-native Cua Driver is a
 // subprocess, but only this reviewed desktop-tool subset reaches the agent.
 //
-// The driver lifecycle lives in driver-client.cjs: it starts lazily, performs
-// the version handshake, answers health checks and restarts a crashed driver
-// with a backoff instead of locking the plugin for the rest of its life.
+// The driver lifecycle lives in driver-client.cjs, the observation bookkeeping
+// in observation.cjs and the coordinate rules in geometry.cjs.
 const { createDriverClient } = require('./driver-client.cjs');
 const { checkAppAccess, parsePolicy, validateKeyCombo, validateText, writeTools } = require('./policy.cjs');
 const { audit } = require('./audit.cjs');
-const { parseDriverObservation, selectTargetWindow } = require('./identity.cjs');
+const { parseDriverObservation } = require('./identity.cjs');
+const { createObservationStore } = require('./observation.cjs');
+const { parseDisplayMetrics, toDriverCoordinates } = require('./geometry.cjs');
 const { getRevocation, revokeFor } = require('./control-state.cjs');
-const tokenWindows = new Map();
 
 // An explicit path makes managed installs predictable; otherwise let the OS
 // resolve the official executable from PATH.
@@ -45,66 +45,17 @@ function getPolicy() {
 function hasAppRestrictions(policy) {
   return policy.default_access === 'deny' || policy.allowed_apps.length > 0 || policy.denied_apps.length > 0;
 }
-function rememberWindowSnapshot(args, result) {
-  const body = result?.structuredContent || {};
-  let snapshotId = body.snapshot_id;
-  if (typeof snapshotId !== 'string' && Array.isArray(result?.content)) {
-    const text = result.content.find((block) => block.type === 'text')?.text || '';
-    snapshotId = text.match(/snapshot_id[=: ]+(s[0-9a-f]{8})/i)?.[1];
-  }
-  if (typeof snapshotId !== 'string') return;
-  const windows = parseDriverObservation(result).windows;
-  const window = windows.find((item) => item.id === String(args.window_id) && item.pid === args.pid);
-  const fallback = {
-    id: args.window_id === undefined ? null : String(args.window_id),
-    pid: args.pid ?? null,
-    title: body.window_title || body.title || null,
-    app: body.app_name || body.app || null,
-    processName: body.process_name || body.app_name || null,
-  };
-  const identity = window || fallback;
-  if (identity.id && identity.pid) {
-    tokenWindows.set(snapshotId, identity);
-    if (tokenWindows.size > 512) tokenWindows.delete(tokenWindows.keys().next().value);
-  }
+function envNumber(name, fallback) {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
 }
-function tokenWindow(args) {
-  const token = typeof args.element_token === 'string' ? args.element_token : '';
-  const snapshotId = token.match(/^(s[0-9a-f]{8}):\d+$/i)?.[1];
-  return snapshotId ? tokenWindows.get(snapshotId) || null : null;
-}
-async function observeTarget(name, args, policy) {
-  const targetArg = args.target && typeof args.target === 'object' ? args.target : {};
-  const requestedWindow = [args.window_id, args.windowId, args.hwnd, args.target_window_id, args.targetWindowId, targetArg.window_id, targetArg.windowId]
+const observationTtlMs = envNumber('COMPUTER_USE_OBSERVATION_TTL_MS', 1500);
+
+function requestsWindow(args = {}) {
+  const target = args.target && typeof args.target === 'object' ? args.target : {};
+  const named = [args.window_id, args.windowId, args.hwnd, args.target_window_id, args.targetWindowId, target.window_id, target.windowId]
     .some((value) => (typeof value === 'string' && value.trim()) || (typeof value === 'number' && Number.isFinite(value)));
-  const tokenIdentity = tokenWindow(args);
-  let observation = { windows: [], active: null };
-  try {
-    const result = await driver.call('tools/call', { name: 'get_desktop_state', arguments: {} });
-    observation = parseDriverObservation(result);
-    if (requestedWindow || tokenIdentity || (['set_value', 'bring_to_front'].includes(name) && args.window_title)) {
-      const windows = await driver.call('tools/call', { name: 'list_windows', arguments: {} });
-      const listed = parseDriverObservation(windows);
-      const unique = new Map([...observation.windows, ...listed.windows].map((window) => [`${window.pid ?? ''}:${window.id}:${window.title || ''}`, window]));
-      observation = { windows: [...unique.values()], active: observation.active || listed.active };
-    }
-  } catch (cause) {
-    if (hasAppRestrictions(policy)) throw new Error(`Could not establish a fresh target window identity: ${cause.message}`);
-    return {};
-  }
-  const observedTarget = selectTargetWindow(observation, args, name);
-  let target = observedTarget;
-  if (tokenIdentity) {
-    const targetArg = args.target && typeof args.target === 'object' ? args.target : {};
-    const requestedId = args.window_id ?? args.windowId ?? targetArg.window_id ?? targetArg.windowId;
-    const requestedPid = args.pid ?? targetArg.pid;
-    const conflicts = targetArg.kind === 'desktop' || (requestedId !== undefined && String(requestedId) !== tokenIdentity.id) || (requestedPid !== undefined && requestedPid !== tokenIdentity.pid);
-    const currentlyObserved = observation.windows.some((window) => window.id === tokenIdentity.id && window.pid === tokenIdentity.pid);
-    if (conflicts || !currentlyObserved) target = null;
-    else target = tokenIdentity;
-  }
-  if (!target && hasAppRestrictions(policy)) throw new Error('App access policy requires a fresh, observed target window identity; re-observe the desktop and select a visible window.');
-  return target || {};
+  return named || typeof args.element_token === 'string' || typeof args.pid === 'number';
 }
 
 const driverEnv = {};
@@ -123,6 +74,88 @@ const driver = createDriverClient({
   minimumVersion: process.env.COMPUTER_USE_MIN_DRIVER_VERSION?.trim() || '0.38.0',
   logger: { warn: (message) => process.stderr.write(`${message}\n`), debug: () => {} },
 });
+const observations = createObservationStore({ ttlMs: observationTtlMs, snapshotTtlMs: 30_000 });
+
+// Refresh the desktop observation when the cached one is too old. The
+// observation is reused inside its lifetime, so a burst of writes does not
+// capture the whole screen again.
+async function ensureObservation(args = {}, name = '') {
+  const cached = observations.snapshot();
+  if (cached && observations.isFresh()) return cached;
+  const result = await driver.call('tools/call', { name: 'get_desktop_state', arguments: {} });
+  const parsed = parseDriverObservation(result);
+  let windows = parsed.windows;
+  let active = parsed.active;
+  if (requestsWindow(args) || (['set_value', 'bring_to_front'].includes(name) && typeof args.window_title === 'string')) {
+    const listed = await driver.call('tools/call', { name: 'list_windows', arguments: {} });
+    const listParsed = parseDriverObservation(listed);
+    const unique = new Map([...windows, ...listParsed.windows].map((window) => [`${window.pid ?? ''}:${window.id}:${window.title || ''}`, window]));
+    windows = [...unique.values()];
+    active = active || listParsed.active;
+  }
+  return observations.store({
+    tool: 'get_desktop_state',
+    result,
+    args,
+    windows,
+    active,
+    metrics: parseDisplayMetrics(result),
+  });
+}
+
+// Convert agent coordinates into the space the driver expects. Nothing is
+// converted unless the observation declares a logical coordinate space.
+function applyCoordinateConversion(args = {}, metrics = null) {
+  if (!metrics || typeof args.x !== 'number' || typeof args.y !== 'number') return args;
+  const converted = toDriverCoordinates({ x: args.x, y: args.y }, metrics);
+  if (!converted || !converted.converted) return args;
+  return { ...args, x: converted.x, y: converted.y };
+}
+
+// Observation tools feed the generation counter: a desktop observation starts a
+// new generation, a window list only extends the current one, and a window
+// state registers the element reference the agent will use for a later write.
+function recordObservation(name, args, result) {
+  const parsed = parseDriverObservation(result);
+  if (name === 'get_desktop_state') {
+    observations.store({
+      tool: name,
+      result,
+      args,
+      windows: parsed.windows,
+      active: parsed.active,
+      metrics: parseDisplayMetrics(result),
+    });
+    return;
+  }
+  if (name === 'list_windows') {
+    observations.mergeWindows(parsed.windows, parsed.active);
+    return;
+  }
+  if (name === 'get_window_state') {
+    const body = result?.structuredContent || {};
+    const snapshotId = typeof body.snapshot_id === 'string'
+      ? body.snapshot_id
+      : (Array.isArray(result?.content)
+        ? result.content.find((block) => block.type === 'text')?.text?.match(/snapshot_id[=: ]+(s[0-9a-f]{8})/i)?.[1] || null
+        : null);
+    if (!snapshotId) return;
+    const requestedId = args.window_id ?? args.windowId ?? null;
+    const requestedPid = typeof args.pid === 'number' ? args.pid : null;
+    const observed = (observations.snapshot()?.windows || []).find((window) => (
+      (requestedId === null || window.id === String(requestedId))
+      && (requestedPid === null || window.pid === requestedPid)
+    ));
+    const fallback = {
+      id: requestedId === null ? null : String(requestedId),
+      pid: requestedPid,
+      title: body.window_title || body.title || null,
+      app: body.app_name || body.app || null,
+      processName: body.process_name || body.app_name || null,
+    };
+    observations.registerSnapshot(snapshotId, { target: observed || fallback, tool: name });
+  }
+}
 
 function send(message) { process.stdout.write(`${JSON.stringify(message)}\n`); }
 function error(id, message, code = -32000) { return { jsonrpc: '2.0', id, error: { code, message } }; }
@@ -142,7 +175,7 @@ async function handle(message) {
     }
     if (message.method === 'tools/call') {
       const name = message.params?.name;
-      const args = message.params?.arguments || {};
+      let args = message.params?.arguments || {};
       if (name === 'computer_use_status') return reply({ content: [{ type: 'text', text: JSON.stringify(await getRevocation()) }] });
       if (name === 'computer_use_revoke') {
         const seconds = Math.max(1, Math.min(3600, Number(args.duration_seconds) || 120));
@@ -158,9 +191,17 @@ async function handle(message) {
         if (revocation.revoked) denied = 'Computer Use is revoked. Ask the user before resuming.';
         if (!denied) {
           const policy = getPolicy();
-          const target = await observeTarget(name, args, policy);
-          const appVerdict = checkAppAccess(policy, target);
-          if (!appVerdict.allowed) denied = appVerdict.reason;
+          const observation = await ensureObservation(args, name);
+          const resolved = observations.resolveTarget({ args, name });
+          if (resolved.error) {
+            denied = resolved.error;
+          } else if (!resolved.target && hasAppRestrictions(policy)) {
+            denied = 'App access policy requires a fresh, observed target window identity; re-observe the desktop and select a visible window.';
+          } else {
+            const appVerdict = checkAppAccess(policy, resolved.target || {});
+            if (!appVerdict.allowed) denied = appVerdict.reason;
+          }
+          if (!denied) args = applyCoordinateConversion(args, observation.metrics);
         }
         const unsafeKey = !denied && (name === 'press_key' || name === 'hotkey') ? validateKeyCombo(args) : null;
         if (unsafeKey) denied = `Input blocked by safety policy: ${unsafeKey}`;
@@ -174,7 +215,7 @@ async function handle(message) {
       }
       try {
         const result = await driver.call('tools/call', { name, arguments: args });
-        if (name === 'get_window_state') rememberWindowSnapshot(args, result);
+        recordObservation(name, args, result);
         void audit({ action: name, ok: true, durationMs: Date.now() - startedAt, args }).catch((cause) => process.stderr.write(`Computer Use audit write failed: ${cause.message}\n`));
         return reply(result);
       } catch (cause) {

@@ -222,7 +222,7 @@ test('app guard uses observed active identity and only permits an observed reque
   assert.match(forgedWindow.error.message, /fresh, observed target window identity/);
   await bridge.request('tools/call', { name: 'get_window_state', arguments: { pid: 202, window_id: 2 } });
   const conflictingElementTarget = await bridge.request('tools/call', { name: 'set_value', arguments: { element_token: 's12345678:1', target: { kind: 'window', pid: 101, window_id: 1 }, value: 'safe' } });
-  assert.match(conflictingElementTarget.error.message, /fresh, observed target window identity/);
+  assert.match(conflictingElementTarget.error.message, /disagree/);
   const elementTarget = await bridge.request('tools/call', { name: 'set_value', arguments: { element_token: 's12345678:1', value: 'safe' } });
   assert.equal(JSON.parse(elementTarget.result.content[0].text).name, 'set_value');
   assert.equal(await closeBridge(bridge), 0);
@@ -381,4 +381,40 @@ test('a driver older than the supported minimum is refused at startup', async (t
   assert.ok(failed.error, JSON.stringify(failed));
   assert.match(failed.error.message, /0\.30\.0/);
   assert.match(failed.error.message, /0\.38\.0/);
+});
+
+test('an element reference that no observation backs is refused', async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'computer-use-stale-token-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFakeConfig(directory, { tools: toolCatalog, scenario: windowScenario });
+  const bridge = startBridge(driverEnv(directory, {
+    DUYA_PLUGIN_DATA: path.join(directory, 'plugin-data'),
+    COMPUTER_USE_ACCESS_POLICY: JSON.stringify({ default_access: 'deny', allowed_apps: ['allowed.exe'] }),
+  }));
+  t.after(() => { if (bridge.child.exitCode === null) bridge.child.kill('SIGKILL'); });
+  await connect(bridge);
+
+  const unknownToken = await bridge.request('tools/call', { name: 'set_value', arguments: { element_token: 'sdeadbeef:1', value: 'safe' } });
+  assert.ok(unknownToken.error, JSON.stringify(unknownToken));
+  assert.match(unknownToken.error.message, /stale or unknown/);
+  assert.equal(await closeBridge(bridge), 0);
+});
+
+test('a burst of writes reuses one observation instead of recapturing the desktop', async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'computer-use-observation-cache-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFakeConfig(directory, { tools: toolCatalog, scenario: windowScenario });
+  const bridge = startBridge(driverEnv(directory, {
+    DUYA_PLUGIN_DATA: path.join(directory, 'plugin-data'),
+    COMPUTER_USE_ACCESS_POLICY: JSON.stringify({ default_access: 'deny', allowed_apps: ['allowed.exe'] }),
+    COMPUTER_USE_OBSERVATION_TTL_MS: '60000',
+  }));
+  t.after(() => { if (bridge.child.exitCode === null) bridge.child.kill('SIGKILL'); });
+  await connect(bridge);
+
+  for (let index = 0; index < 3; index++) {
+    const write = await bridge.request('tools/call', { name: 'set_value', arguments: { window_id: 2, value: `value-${index}` } });
+    assert.ok(write.result, JSON.stringify(write));
+  }
+  assert.equal(await closeBridge(bridge), 0);
 });
