@@ -148,7 +148,7 @@ function createDriverClient(options = {}) {
 
   function onChildError(state, cause) {
     const hint = cause.code === 'ENOENT'
-      ? 'The Cua Driver is not installed or not on PATH; install it and set the executable path.'
+      ? 'The Cua Driver is not installed or not on PATH. Install it with the driver\'s own installer (install.ps1 on Windows, install.sh on macOS/Linux) from the upstream release (https://github.com/trycua/cua/releases), then set "Cua Driver executable path" in the plugin settings.'
       : 'Check the configured executable path and OS permissions.';
     const message = `Cua Driver could not start (${cause.message}). ${hint}`;
     log.warn(message);
