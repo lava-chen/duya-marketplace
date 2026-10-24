@@ -17,6 +17,12 @@ test('the manifest and the package agree on the plugin version', () => {
   assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
 });
 
+test('the server reports the same plugin version', () => {
+  const source = fs.readFileSync(path.join(pluginRoot, 'server.cjs'), 'utf8');
+  const declared = source.match(/PLUGIN_VERSION\s*=\s*'([^']+)'/)?.[1];
+  assert.equal(declared, pkg.version);
+});
+
 test('the declared permission tiers cover every tool the plugin exposes', () => {
   const read = new Set(permissions.tiers.read);
   const write = new Set(permissions.tiers.write);
