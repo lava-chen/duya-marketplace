@@ -93,6 +93,46 @@ deliberately NOT ported.
   is read from each plugin's own `.duya-plugin/plugin.json` and on-disk
   capability directories — disk is the single source of truth.
 
+## Builtin distribution (`builtin-plugins.json`)
+
+`builtin-plugins.json` lists the plugins that ship **inside the duya
+installer**. A user does not have to clone this marketplace to get them:
+the duya build stages the listed plugin directories into the app bundle, the
+runtime seeds them into `~/.duya/plugins/cache/builtin/`, and the manifest
+decides whether each one starts enabled.
+
+```json
+{
+  "version": 1,
+  "plugins": [
+    {
+      "name": "computer-use",
+      "path": "./plugins/computer-use",
+      "description": "Control the local desktop through the official Cua Driver MCP server.",
+      "requiredPaths": [".duya-plugin/plugin.json", "server.cjs"],
+      "defaultEnabled": false
+    }
+  ]
+}
+```
+
+- `name` — directory name under `plugins/`; also the directory name the build
+  stages into the app bundle.
+- `path` — source location, relative to this repo root.
+- `requiredPaths` — files that must exist for the plugin to be considered
+  intact. The build refuses to stage a plugin that is missing any of them, and
+  the runtime refuses to seed a plugin that is missing any of them (it keeps
+  the previously seeded copy instead of installing a broken one).
+- `defaultEnabled` — the initial enabled state. `false` means the plugin
+  ships installed but stays off until the user turns it on in Settings.
+
+**The version is not declared here.** It is read from the plugin's own
+`.duya-plugin/plugin.json`, so there is exactly one place to bump it.
+
+`computer-use` is `defaultEnabled: false`: it ships an MCP server and talks
+to an external driver the user installs separately, so it must not start
+acting on the desktop on its own.
+
 ## Adding / regenerating
 
 `scripts/generate-catalog.py` rebuilds the full catalog from the duya sources:
