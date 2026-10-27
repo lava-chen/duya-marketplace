@@ -5,8 +5,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
     <title>Conductor Canvas</title>
-    <script type="module" crossorigin src="./assets/index-DJmYZ_Gy.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-Ye-HtvCo.css">
+    <!--
+      Set the theme before the first paint. The App runs in an opaque-origin
+      sandboxed iframe, so duya's own data-theme never reaches this document;
+      the OS preference is the only value available this early, and the host
+      pushes duya's real theme right after the document loads.
+    -->
+    <script>
+      (function () {
+        try {
+          var prefersDark = window.matchMedia
+            && window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var theme = prefersDark ? "dark" : "light";
+          document.documentElement.setAttribute("data-theme", theme);
+          document.documentElement.style.colorScheme = theme;
+        } catch (error) {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      })();
+    </script>
+    <script type="module" crossorigin src="./assets/index-CrIMLDuI.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-CLgaKby6.css">
   </head>
   <body>
     <div id="root"></div>

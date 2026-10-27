@@ -1,35 +1,48 @@
 @import "tailwindcss";
+@import "./styles/tokens.css";
 @import "./styles/canvas.css";
 @import "./styles/conductor.css";
 
+/*
+ * Tailwind theme mapping — mirrors duya's packages/ui/src/styles/globals.css.
+ * Without it the plugin's utility classes (text-muted-foreground,
+ * border-border, bg-background, ...) resolve to nothing and the shim
+ * components in src/app-shims/ lose their colours.
+ */
+@theme {
+  --color-background: var(--main-bg);
+  --color-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-error: var(--error);
+  --color-error-soft: var(--error-soft);
+  --font-sans: 'Styrene', ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "PingFang TC", "Hiragino Sans", "Microsoft YaHei", sans-serif;
+  --font-mono: 'Fira Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-serif: 'Copernicus', ui-serif, Georgia, Cambria, "Times New Roman", "Noto Serif CJK SC", "Source Han Serif SC", "PingFang SC", serif;
+}
+
+/*
+ * The App runs in an opaque-origin sandboxed iframe, so duya's own :root
+ * variables never reach it — styles/tokens.css carries duya's token layer
+ * instead. These are the document-level defaults that used to be hardcoded
+ * here; they now read from that token layer so light and dark both work.
+ */
 :root {
   color-scheme: light;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #252627;
-  background: #f8f8f6;
-  --main-bg: #f8f8f6;
-  --surface: #fff;
-  --surface-hover: #f1f2f1;
-  --text: #26272a;
-  --foreground: #26272a;
-  --muted: #777a80;
-  --border: #e5e6e4;
-  --accent: #5966e9;
-  --canvas-bg: #f8f8f6;
-  --canvas-grid-dot: #d5d6d2;
-  --conductor-grid-dot: #d5d6d2;
-  --conductor-border: #e5e6e4;
-  --panel-bg: #fff;
-  --shadow-elevated: 0 10px 32px #00000012;
-  --shadow-resting: 0 2px 5px #0000000b;
-  --radius-panel: 12px;
-  --send-btn: #5966e9;
-  --send-btn-hover: #4b57d2;
+  font-family: var(--font-sans);
+  color: var(--text);
+  background: var(--main-bg);
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 * { box-sizing: border-box; }
 html, body, #root { width: 100%; height: 100%; margin: 0; }
 body { overflow: hidden; }
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
-.plugin-app-status { display:grid; place-content:center; min-height:100%; text-align:center; color:#333; }
-.plugin-app-status button { border:1px solid #d8d8d8; border-radius:7px; padding:7px 12px; background:white; }
+.plugin-app-status { display:grid; place-content:center; min-height:100%; text-align:center; color:var(--text); }
+.plugin-app-status button { border:1px solid var(--border); border-radius:7px; padding:7px 12px; background:var(--surface-solid); color:var(--text); }

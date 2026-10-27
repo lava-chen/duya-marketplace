@@ -1,0 +1,295 @@
+/*
+ * tokens.css — duya design tokens for the Conductor Canvas plugin.
+ *
+ * The plugin App runs in an opaque-origin sandboxed iframe, so it cannot
+ * inherit duya's :root variables. This file is the plugin's copy of that
+ * layer, and it is what makes the canvas look like duya's own panels.
+ *
+ * Generated from duya:
+ *   packages/ui/src/styles/base.css    (:root + :root[data-theme="dark"])
+ *   packages/ui/src/styles/globals.css (@theme mapping + font stacks)
+ * plus the conductor-only tokens duya removed with the built-in canvas
+ * runtime (bcf0d946), and the never-defined tokens the plugin CSS still
+ * consumes, mapped onto duya's canonical ones.
+ *
+ * When duya's palette changes, regenerate this file — do not hand-edit
+ * values that duya also owns.
+ */
+
+:root {
+
+  --bg-canvas: #fefdfb;
+  --bg-accent-1: transparent;
+  --bg-accent-2: transparent;
+  --shell-bg: #fefdfb;
+  /* Soft pastel aurora — replaces the previous solid warm cream.
+     Gives the sidebar (and app-shell) a translucent, dreamy feel
+     without backdrop-blur (no frosted glass — just soft color blending). */
+  --sidebar-bg: linear-gradient(
+    135deg,
+    #fde0d2 0%,
+    #fef3ea 30%,
+    #eaf1ed 65%,
+    #d4eae2 100%
+  );
+  --main-bg: #ffffff;
+  /* Glass overlays used when the window has a native backdrop (Mica /
+     macOS vibrancy). Content surfaces keep a high-opacity white so text
+     stays crisp; chrome (sidebar/titlebar) is more transparent so the
+     wallpaper tint reads through. */
+  --glass-main: rgba(255, 255, 255, 0.66);
+  --glass-chrome: rgba(254, 250, 246, 0.38);
+  /* Glass edge stroke: top-lit gradient drawn in the border-box layer.
+     Bright at the top edge (light catching the pane), fading down. */
+  --glass-edge: linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.12));
+  /* --panel-surface: a panel card's own surface. The reference product lifts
+     it one step above the conversation canvas so the card reads as a window
+     floating on the pane. The light canvas is already pure white, so the
+     light theme has no headroom and keeps the card flush (its 1px border is
+     what separates it); the dark theme gets the lift. */
+  --panel-surface: #ffffff;
+  --surface: rgba(0, 0, 0, 0.03);
+  --surface-solid: #f7f7f7;
+  --surface-hover: rgba(0, 0, 0, 0.06);
+  --text: #1a1a1a;
+  --foreground: #1a1a1a;
+  --muted: #6b6b6b;
+  --border: rgba(0, 0, 0, 0.06);
+  /* --border-color: legacy alias consumed by the chat input surface
+   * (MessageInput.tsx uses `inset 0 0 0 1px var(--border-color)` as its
+   * border). Kept identical to --border so the composer edge matches
+   * every other bordered component (cards, headers, inputs). */
+  --border-color: var(--border);
+  /* --composer-bg: chat input surface background. Light theme is pure
+   * white (matches --main-bg) so the composer blends into the canvas;
+   * dark theme keeps the original translucent --surface. */
+  --composer-bg: #ffffff;
+  /* Border scale — the ONLY three border colors. Rules:
+   * --border       default edge (cards, headers, inputs)
+   * --border-weak  muted dividers (status bars, in-list separators)
+   * --border-strong interactive emphasis (hover/active edges)
+   * Never hard-code rgba/hex border colors or ad-hoc color-mix. */
+  --border-weak: color-mix(in srgb, var(--border) 60%, transparent);
+  --border-strong: color-mix(in srgb, var(--text) 22%, var(--border));
+  /* Aliases used by the automation / workflow surfaces (plan 552 + 556):
+   * they name the same two ideas the canonical tokens already carry, so
+   * pointing them at --muted / --surface keeps those files from drifting
+   * into undefined custom properties (which silently render as inherited
+   * text colour). Derived from the canonical tokens, so both themes work
+   * with this single declaration. */
+  --text-faint: var(--muted);
+  --bg-surface-1: var(--surface);
+  --bg-surface-2: var(--surface-hover);
+  --border-width: 1px;
+  --grid-dot: rgba(0, 0, 0, 0.06);
+  /* Rakazo-style bot roster tokens (light, ported from @rakazo/ui-tokens). */
+  --rk-background: #fafaf8;
+  --rk-card: #ffffff;
+  --rk-muted: #f0f0ed;
+  --rk-muted-fg: #6c6c70;
+  --rk-border: #f0f0ed;
+  --accent: #7c3aed;
+  --accent-soft: rgba(124, 58, 237, 0.2);
+  --accent-shadow: rgba(124, 58, 237, 0.42);
+  --chip: rgba(0, 0, 0, 0.03);
+  --shell-shadow: none;
+  --send-btn: #b892ff;
+  --send-btn-hover: #a87eef;
+  --success: #22c55e;
+  --success-soft: rgba(34, 197, 94, 0.2);
+  --warning: #f59e0b;
+  --warning-soft: rgba(245, 158, 11, 0.2);
+  --error: #ef4444;
+  --error-soft: rgba(239, 68, 68, 0.1);
+  /* Node-kind accent palette (workflow graph / run cards). Light theme. */
+  --accent-emerald: #10b981;
+  --accent-teal: #14b8a6;
+  --accent-amber: #f59e0b;
+  --accent-violet: #8b5cf6;
+  --accent-rose: #f43f5e;
+  --accent-sky: #0ea5e9;
+
+  --panel-bg: rgba(255, 255, 255, 0.72);
+  --panel-bg-solid: #ffffff;
+  --element-bg: #ffffff;
+  --text-primary: #1d1d1f;
+  --text-secondary: #86868b;
+  --text-tertiary: #aeaeb2;
+  --shadow-resting: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-hovering: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
+  --shadow-elevated: 0 12px 32px rgba(0, 0, 0, 0.12), 0 4px 8px rgba(0, 0, 0, 0.06);
+  --motion-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --motion-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+  --motion-duration-micro: 150ms;
+  --motion-duration-small: 250ms;
+  --motion-duration-large: 400ms;
+  --radius-element: 12px;
+  --radius-frame: 14px;
+  --radius-panel: 18px;
+  --radius-popover: 14px;
+  --radius-button: 10px;
+  --radius-button-compact: 8px;
+
+  /* Slash command menu — light theme tokens (Codex-style flat gray) */
+  --command-menu-bg: #ffffff;
+  --command-menu-border: #e5e5e5;
+  --command-menu-selected: #f1f1f1;
+  --command-menu-muted: #6b6b6b;
+  --command-menu-shadow: 0 6px 18px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.06);
+
+  /* Unified page framework — shared by automation / gateway /
+   * extensions main-window views. One source of truth for max-width,
+   * section spacing and the typography scale so every page renders the
+   * same title / subtitle / body / caption sizes. */
+  --page-max-width: 1200px;
+  --page-gap: 1.5rem;
+  --page-pad-y: 2.5rem;
+  --page-pad-x: 2rem;
+  --page-title-size: 1.75rem;        /* 28px */
+  --page-title-weight: 700;
+  --page-subtitle-size: 0.875rem;    /* 14px */
+  --page-card-title-size: 0.9375rem; /* 15px */
+  --page-body-size: 0.875rem;        /* 14px */
+  --page-caption-size: 0.75rem;      /* 12px */
+
+  /* Scrollbar tokens (design declaration only — no consumption rules;
+   * scrollbars follow browser defaults for now, matching Grokbot). */
+  --duya-scrollbar-vertical-size: 14px;
+  --duya-scrollbar-horizontal-size: 12px;
+  --duya-scrollbar-thumb-bg: color-mix(in srgb, var(--text) 22%, transparent);
+  --duya-scrollbar-thumb-hover-bg: color-mix(in srgb, var(--text) 32%, transparent);
+  --duya-scrollbar-thumb-active-bg: color-mix(in srgb, var(--text) 40%, transparent);
+  --duya-scrollbar-shadow: none;
+
+  /* Conductor tokens — owned by duya before the built-in canvas runtime was removed. */
+  --canvas-bg: #ffffff;
+  --conductor-accent: #007aff;
+  --conductor-accent-soft: rgba(0, 122, 255, 0.12);
+  --conductor-accent-shadow: rgba(0, 122, 255, 0.2);
+  --conductor-grid-dot: rgba(0, 0, 0, 0.04);
+  --conductor-border: rgba(0, 0, 0, 0.08);
+  --conductor-border-strong: rgba(0, 0, 0, 0.12);
+  --shadow-focusing: 0 0 0 2px var(--conductor-accent), 0 4px 16px rgba(0, 122, 255, 0.2);
+  --canvas-tool-accent: #9d3bea;
+  --canvas-tool-accent-shadow: rgba(157, 59, 234, 0.22);
+
+  /* Tokens the canvas CSS consumes that duya never defined; mapped onto duya's canonical tokens. */
+  --bg-app: var(--main-bg);
+  --bg-canvas-rgb: 254, 253, 251;
+  --bg-hover: var(--surface-hover);
+  --bg-secondary: var(--surface-solid);
+  --bg-surface: var(--surface);
+  --danger: var(--error);
+  --motion-duration-fast: 120ms;
+  --text-muted: var(--muted);
+
+  --font-sans: 'Styrene', ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "PingFang TC", "Hiragino Sans", "Microsoft YaHei", sans-serif;
+  --font-mono: 'Fira Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-serif: 'Copernicus', ui-serif, Georgia, Cambria, "Times New Roman", "Noto Serif CJK SC", "Source Han Serif SC", "PingFang SC", serif;
+}
+
+:root[data-theme="dark"] {
+
+  --bg-canvas: #1e1e1e;
+  --shell-bg: #1e1e1e;
+  /* Soft pastel aurora (dark) — warm brown fading to dark teal. */
+  --sidebar-bg: linear-gradient(
+    135deg,
+    #2a1f1c 0%,
+    #1e1a18 50%,
+    #182022 100%
+  );
+  --main-bg: #1e1e1e;
+  /* Glass overlays (dark): see the light-theme twins above. */
+  --glass-main: rgba(30, 30, 30, 0.66);
+  --glass-chrome: rgba(37, 37, 37, 0.38);
+  /* Dark twin: lower alphas so the stroke reads as edge light, not a frame. */
+  --glass-edge: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.04));
+  /* One step above --main-bg, the same lift the reference's panel carries. */
+  --panel-surface: #232323;
+  --surface: rgba(255, 255, 255, 0.06);
+  --surface-solid: #2c2c2c;
+  --surface-hover: rgba(255, 255, 255, 0.1);
+  --text: #ffffff;
+  --foreground: #ffffff;
+  --muted: #8a8a8a;
+  --border: rgba(255, 255, 255, 0.08);
+  /* Rakazo-style bot roster tokens (dark): near-black warm surface with
+     #141416 solid cards — the rakazo sidebar palette. */
+  --rk-background: #0d0d0e;
+  --rk-card: #141416;
+  --rk-muted: #1a1a1d;
+  --rk-muted-fg: #85858a;
+  --rk-border: #26262a;
+  /* --border-color: dark-theme counterpart, identical to --border */
+  --border-color: var(--border);
+  /* --composer-bg: dark theme keeps the original translucent surface */
+  --composer-bg: var(--surface);
+  --grid-dot: rgba(255, 255, 255, 0.08);
+  --accent: #a78bfa;
+  --accent-soft: rgba(167, 139, 250, 0.24);
+  --accent-shadow: rgba(167, 139, 250, 0.5);
+  --chip: rgba(255, 255, 255, 0.06);
+  --shell-shadow: none;
+  --send-btn: #b892ff;
+  --send-btn-hover: #a87eef;
+  --success: #22c55e;
+  --success-soft: rgba(34, 197, 94, 0.2);
+  --warning: #f59e0b;
+  --warning-soft: rgba(245, 158, 11, 0.2);
+  --error: #ef4444;
+  --error-soft: rgba(239, 68, 68, 0.1);
+  /* Node-kind accent palette (workflow graph / run cards). Dark theme — one
+   * step lighter so solid avatar fills keep contrast on dark surfaces. */
+  --accent-emerald: #34d399;
+  --accent-teal: #2dd4bf;
+  --accent-amber: #fbbf24;
+  --accent-violet: #a78bfa;
+  --accent-rose: #fb7185;
+  --accent-sky: #38bdf8;
+
+  --panel-bg: rgba(28, 28, 30, 0.72);
+  --panel-bg-solid: #2c2c2e;
+  --element-bg: #2c2c2e;
+  --text-primary: #ffffff;
+  --text-secondary: #98989d;
+  --text-tertiary: #636366;
+  --shadow-resting: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-hovering: 0 4px 12px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
+  --shadow-elevated: 0 12px 32px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.4);
+
+  /* Slash command menu — dark theme tokens (Codex-style flat gray) */
+  --command-menu-bg: #2b2b2b;
+  --command-menu-border: #3a3a3a;
+  --command-menu-selected: #3a3a3a;
+  --command-menu-muted: #8a8a8a;
+  --command-menu-shadow: 0 6px 18px rgba(0, 0, 0, 0.32), 0 1px 4px rgba(0, 0, 0, 0.18);
+
+  /* Scrollbar tokens (dark theme override) */
+  --duya-scrollbar-thumb-bg: rgba(255, 255, 255, 0.18);
+  --duya-scrollbar-thumb-hover-bg: rgba(255, 255, 255, 0.32);
+  --duya-scrollbar-thumb-active-bg: rgba(255, 255, 255, 0.40);
+  --duya-scrollbar-shadow: none;
+
+  /* Conductor tokens — dark twin. */
+  --canvas-bg: #1c1c1e;
+  --conductor-accent: #0a84ff;
+  --conductor-accent-soft: rgba(10, 132, 255, 0.2);
+  --conductor-accent-shadow: rgba(10, 132, 255, 0.3);
+  --conductor-grid-dot: rgba(255, 255, 255, 0.035);
+  --conductor-border: rgba(255, 255, 255, 0.1);
+  --conductor-border-strong: rgba(255, 255, 255, 0.16);
+  --shadow-focusing: 0 0 0 2px var(--conductor-accent), 0 4px 16px rgba(10, 132, 255, 0.3);
+  --canvas-tool-accent: #ad63f5;
+  --canvas-tool-accent-shadow: rgba(173, 99, 245, 0.28);
+
+  /* Dark twin of the mapped tokens. */
+  --bg-app: var(--main-bg);
+  --bg-canvas-rgb: 30, 30, 30;
+  --bg-hover: var(--surface-hover);
+  --bg-secondary: var(--surface-solid);
+  --bg-surface: var(--surface);
+  --danger: var(--error);
+  --motion-duration-fast: 120ms;
+  --text-muted: var(--muted);
+}
