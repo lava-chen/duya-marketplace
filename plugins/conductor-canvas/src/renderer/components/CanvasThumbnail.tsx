@@ -32,7 +32,7 @@ const STICKY: Record<string, { fill: string; stroke: string }> = {
 };
 
 const SURFACE = "var(--surface,#1e1e22)";
-const MUTED = "var(--muted-foreground,#888)";
+const MUTED = "var(--muted,#888)";
 
 type ThumbItem = {
   id: string;

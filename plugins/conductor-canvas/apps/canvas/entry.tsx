@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ConductorHostContext, type ConductorHost, type ConductorProvider, type ConductorProviderStatus } from "../../src/renderer/host";
 import { pluginBridge } from "../../src/renderer/plugin-bridge";
+import { initTheme } from "../../src/renderer/theme";
 import { ConductorView } from "../../src/renderer/components/ConductorView";
 import "../../src/app.css";
 
@@ -51,4 +52,7 @@ function App() {
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Canvas app root element is missing.");
+// Install the theme listeners before the first React render so the document
+// already carries a data-theme and the host's push is never missed.
+initTheme();
 createRoot(root).render(<App />);

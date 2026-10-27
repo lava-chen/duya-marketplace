@@ -24,7 +24,7 @@ export const ImageElement: React.FC<{ element: CanvasElement }> = ({ element }) 
         height: "100%",
         borderRadius: "var(--radius-element)",
         overflow: "hidden",
-        background: "var(--canvas-surface, rgba(0,0,0,0.04))",
+        background: "var(--surface, rgba(0,0,0,0.04))",
         display: "flex",
         flexDirection: "column",
         position: "relative",
